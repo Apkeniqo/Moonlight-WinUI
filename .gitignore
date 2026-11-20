@@ -2,7 +2,6 @@
 bin/
 obj/
 native/mlc-build/
-native/redist/
 
 # ---- native 编译中间/输出 ----
 native/*.obj
@@ -13,9 +12,7 @@ native/*.dll
 native/*.exe
 
 # ---- 第三方预编译库 ----
-# native/openssl 已入库（native 编译必需的头文件与导入库，3.8MB）
-SDL2.dll
-SDL3.dll
+# native/openssl、native/redist/x64、SDL2.dll/SDL3.dll 均已入库（运行时依赖随仓库提供）
 
 # ---- 凭据（绝对不能进仓库）----
 native/creds/

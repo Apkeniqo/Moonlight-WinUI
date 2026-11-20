@@ -125,18 +125,25 @@ build-pairtls.bat     :: 3) pairtls.dll（OpenSSL HTTPS 客户端）
 
 也可以直接运行根目录的 `build.bat`（内部即为上述命令，路径按本机 VS 安装位置调整）。
 
-## 运行时依赖（仓库未包含）
+## 运行时依赖
 
-为保证仓库体积与安全性，以下文件不入库，构建前需自备：
+**除配对证书外，运行时依赖已全部随仓库提供** —— clone 后按上面的步骤编译即可直接启动使用。
 
-| 路径 | 内容 | 说明 |
+| 路径 | 内容 | 状态 |
 |---|---|---|
-| `native/redist/x64/` | `avcodec-63.dll` `avformat-63.dll` `avutil-61.dll` `swscale-10.dll` `dav1d.dll` `opus.dll` `libssl-3-x64.dll` `libcrypto-3-x64.dll` | FFmpeg / Opus / OpenSSL 运行时。可用 `vcpkg` 或 [BtbN/FFmpeg-Builds](https://github.com/BtbN/FFmpeg-Builds) 获取 |
-| `SDL2.dll` + `SDL3.dll` | 根目录 | Moonlight 的 `SDL2.dll` 是 sdl2-compat，**必须与 SDL3.dll 同时存在**，只放一个会导致首次调用卡死 |
-| `native/creds/` | `client.crt` `client.key` `uniqueid.txt` | 客户端配对身份；可从已有 Moonlight Qt 版安装目录复制，或在应用内首次配对时生成 |
-| `test-1080p60.mp4` | 可选 | 演示模式（`ML_AUTOSTART=demo`）用的测试片源 |
+| `native/redist/x64/` | `avcodec-63.dll` `avformat-63.dll` `avutil-61.dll` `swscale-10.dll` `dav1d.dll` `opus.dll` `libssl-3-x64.dll` `libcrypto-3-x64.dll` | ✅ 已内置 |
+| `SDL2.dll` + `SDL3.dll` | 根目录 | ✅ 已内置（sdl2-compat **必须与 SDL3.dll 成对存在**，只放 SDL2 会在首次调用时卡死） |
+| `native/third_party/libs/windows/` | FFmpeg / opus 头文件与导入库 | ✅ 已内置（编译用） |
+| `native/openssl/` | OpenSSL 头文件与导入库 | ✅ 已内置（编译用） |
+| `native/creds/` | `client.crt` `client.key` `uniqueid.txt` | ⚠️ **需自备** |
+| `test-1080p60.mp4` | 演示模式（`ML_AUTOSTART=demo`）片源 | ⚠️ 可选，未入库 |
 
-缺失这些文件时，`MoonlightWinUI.csproj` 会自动跳过对应项，主程序仍可编译（但运行时会缺少解码/配对能力）。
+`native/creds/` 是客户端的配对身份（证书 + 私钥），出于安全考虑不入库。可以：
+
+- 从已有的 Moonlight Qt 版安装目录复制一份；
+- 或者在应用内对主机重新配对一次，自动生成。
+
+缺少它时程序仍可编译运行，只是不能直接连接已配对过的主机。
 
 ## 使用
 
