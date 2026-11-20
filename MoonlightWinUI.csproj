@@ -32,25 +32,25 @@
 
   <!-- 直接引用 Moonlight 仓库里预编译的 SDL2，用来验证原生 DLL 互操作 -->
   <ItemGroup>
-    <None Include="SDL2.dll" CopyToOutputDirectory="PreserveNewest" />
-    <None Include="SDL3.dll" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="SDL2.dll" Condition="Exists('SDL2.dll')" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="SDL3.dll" Condition="Exists('SDL3.dll')" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
   <!-- 原生解码/上屏 DLL + FFmpeg 运行时 + 测试片源 -->
   <ItemGroup>
-    <None Include="native\mlrender.dll" CopyToOutputDirectory="PreserveNewest" Link="mlrender.dll" />
+    <None Include="native\mlrender.dll" Condition="Exists('native\mlrender.dll')" CopyToOutputDirectory="PreserveNewest" Link="mlrender.dll" />
     <!-- 配对收尾用的 HTTPS 客户端（OpenSSL，不依赖证书库） -->
-    <None Include="native\pairtls.dll" CopyToOutputDirectory="PreserveNewest" Link="pairtls.dll" />
-    <None Include="test-1080p60.mp4" CopyToOutputDirectory="PreserveNewest" />
-    <None Include="test-1080p60.h264" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="native\pairtls.dll" Condition="Exists('native\pairtls.dll')" CopyToOutputDirectory="PreserveNewest" Link="pairtls.dll" />
+    <None Include="test-1080p60.mp4" Condition="Exists('test-1080p60.mp4')" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="test-1080p60.h264" Condition="Exists('test-1080p60.h264')" CopyToOutputDirectory="PreserveNewest" />
     <!-- 运行期 DLL（FFmpeg / OpenSSL / opus）统一放在 native\redist\x64\，随仓库同步；
          不再引用 Moonlight-Qt 仓库的绝对路径，两台机器同步后都能直接构建。
          升级 FFmpeg 时替换这个目录里的文件即可。 -->
     <None Include="native\redist\x64\*.dll" CopyToOutputDirectory="PreserveNewest" Link="%(Filename)%(Extension)" />
     <!-- 客户端配对身份（Qt 版已配对；MS_Init 从这里读） -->
-    <None Include="native\creds\client.crt" CopyToOutputDirectory="PreserveNewest" Link="creds\client.crt" />
-    <None Include="native\creds\client.key" CopyToOutputDirectory="PreserveNewest" Link="creds\client.key" />
-    <None Include="native\creds\uniqueid.txt" CopyToOutputDirectory="PreserveNewest" Link="creds\uniqueid.txt" />
+    <None Include="native\creds\client.crt" Condition="Exists('native\creds\client.crt')" CopyToOutputDirectory="PreserveNewest" Link="creds\client.crt" />
+    <None Include="native\creds\client.key" Condition="Exists('native\creds\client.key')" CopyToOutputDirectory="PreserveNewest" Link="creds\client.key" />
+    <None Include="native\creds\uniqueid.txt" Condition="Exists('native\creds\uniqueid.txt')" CopyToOutputDirectory="PreserveNewest" Link="creds\uniqueid.txt" />
   </ItemGroup>
 
 </Project>
