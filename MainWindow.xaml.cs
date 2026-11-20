@@ -1487,12 +1487,21 @@ public sealed partial class MainWindow : Window
                 ipBox.IsEnabled = false;
                 portBox.IsEnabled = false;
 
-                // 先问主机：这台电脑是不是已经和我们配对过（按证书 + uniqueid 记，与 IP 无关）。
-                // 换 IP 的情况走这里 —— 直接加新地址，不用再输一次 PIN。
-                status.Text = "正在检查这台电脑是否已配对…";
-                if (await HostApi.IsPairedAsync(host, port))
+                // 换 IP 的话主机还是那一台：先拿 hostname 看本地列表里是不是已经有它，
+                // 有就直接把地址换成新的（不需要重新配对）。
+                // /serverinfo 的 PairStatus 不能当判据 —— 它是按 uniqueid 判的，
+                // uid 与主机记录的 uuid 不一致时会返回 0，但证书其实一直被接受。
+                status.Text = "正在检查这台电脑是否添加过…";
+                var knownName = await HostApi.GetHostnameAsync(host, port);
+                var alreadyKnown =
+                    (!string.IsNullOrWhiteSpace(knownName) &&
+                     _hosts.Any(h => string.Equals(h.Name, knownName, StringComparison.OrdinalIgnoreCase))) ||
+                    _hosts.Any(h => string.Equals(h.Address, host, StringComparison.OrdinalIgnoreCase)) ||
+                    await HostApi.IsPairedAsync(host, port);
+
+                if (alreadyKnown)
                 {
-                    status.Text = $"这台电脑已经配对过，直接把新地址 {host} 加进列表（不需要重新配对）";
+                    status.Text = $"这台电脑已经在列表里，直接把地址换成 {host}（不需要重新配对）";
                     succeeded = true;
                 }
                 else
