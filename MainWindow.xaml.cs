@@ -803,7 +803,7 @@ public sealed partial class MainWindow : Window
             return;
         }
 
-        var cardStep = (AppList.Items.OfType<AppEntry>().FirstOrDefault()?.CardWidth ?? 170) + 20;
+        var cardStep = (AppList.Items.OfType<AppEntry>().FirstOrDefault()?.SlotWidth ?? 170 * 1.05) + 8;
         var notches = Math.Max(1, Math.Abs(delta) / 120);
         var direction = delta > 0 ? -1 : 1;
         var target = Math.Clamp(
@@ -1983,7 +1983,8 @@ public sealed partial class MainWindow : Window
             rowsPanel.Rows = rows;
             rowsPanel.Spacing = rows == 1 ? 32 : 20;
         }
-        var height = Math.Clamp((available * 0.86 - (rows - 1) * 20) / rows - 40, 110, 300);
+        // 格子高度是卡片的 1.05 倍（给悬停放大留空间），这里除以 1.05 保持整体高度不变
+        var height = Math.Clamp((available * 0.86 - (rows - 1) * 20) / rows / 1.05 - 40, 110, 300);
         if (rows == 1)
         {
             height *= 0.8;   // 单行时卡片缩到 80%

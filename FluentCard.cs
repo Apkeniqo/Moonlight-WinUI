@@ -38,9 +38,10 @@ internal static class FluentCard
 
         var slot = new Grid
         {
-            // 宽度 NaN 表示跟着父容器拉伸（自适应换行面板里用）
-            Width = double.IsNaN(cardWidth) ? double.NaN : cardWidth,
-            Height = double.IsNaN(cardHeight) ? double.NaN : cardHeight,
+            // 宽度 NaN 表示跟着父容器拉伸（自适应换行面板里用）；
+            // 固定尺寸时给悬停放大预留空间（卡片 × HoverScale），放大后正好填满格子、不溢出被裁。
+            Width = double.IsNaN(cardWidth) ? double.NaN : cardWidth * HoverScale,
+            Height = double.IsNaN(cardHeight) ? double.NaN : cardHeight * HoverScale,
             Background = new SolidColorBrush(Colors.Transparent),
         };
 
@@ -97,8 +98,8 @@ internal static class FluentCard
         {
             card.SizeChanged += (_, e) =>
             {
-                slot.Width = e.NewSize.Width;
-                slot.Height = e.NewSize.Height;
+                slot.Width = e.NewSize.Width * HoverScale;
+                slot.Height = e.NewSize.Height * HoverScale;
             };
         }
 

@@ -91,13 +91,13 @@
                         <ItemsControl x:Name="AppList" Padding="16">
                             <ItemsControl.ItemsPanel>
                                 <ItemsPanelTemplate>
-                                    <local:HorizontalGridPanel Rows="2" Spacing="20" />
+                                    <local:HorizontalGridPanel Rows="2" Spacing="8" />
                                 </ItemsPanelTemplate>
                             </ItemsControl.ItemsPanel>
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate x:DataType="local:AppEntry">
                                     <StackPanel Spacing="6" Padding="0,0,0,12" Margin="0,8,0,8"
-                                                Width="{x:Bind CardWidth, Mode=OneWay}"
+                                                Width="{x:Bind SlotWidth, Mode=OneWay}"
                                                 AutomationProperties.Name="{x:Bind Title}"
                                                 Tapped="AppCard_Tapped">
                                         <Border Width="{x:Bind CardWidth, Mode=OneWay}" Height="{x:Bind CardHeight, Mode=OneWay}" CornerRadius="8"

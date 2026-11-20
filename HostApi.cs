@@ -43,6 +43,7 @@ public sealed class AppEntry : INotifyPropertyChanged
             if (Math.Abs(_cardWidth - value) < 0.5) { return; }
             _cardWidth = value;
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(CardWidth)));
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(SlotWidth)));
         }
     }
 
@@ -54,8 +55,17 @@ public sealed class AppEntry : INotifyPropertyChanged
             if (Math.Abs(_cardHeight - value) < 0.5) { return; }
             _cardHeight = value;
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(CardHeight)));
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(SlotHeight)));
         }
     }
+
+    /// <summary>
+    /// 卡片在布局里占的格子尺寸 = 卡片 × 悬停放大倍数。
+    /// 格子必须把放大后的卡片装进去，否则最外侧/滚动到视口边缘的卡片一悬停就会被 ScrollViewer 裁掉。
+    /// </summary>
+    public double SlotWidth => _cardWidth * 1.05;
+
+    public double SlotHeight => _cardHeight * 1.05;
 
     /// <summary>占位图上显示的首字（封面图还没到时可见）。</summary>
     public string Initial => string.IsNullOrEmpty(Title) ? "?" : Title[..1].ToUpperInvariant();
