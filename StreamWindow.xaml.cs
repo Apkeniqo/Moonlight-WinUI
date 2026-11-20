@@ -840,9 +840,9 @@ public sealed partial class StreamWindow : Window
         // 兜底：0/负 的分辨率一律按「本机分辨率」处理，绝不能让 0x0 流进设置和请求
         if (wantWidth <= 0 || wantHeight <= 0)
         {
-            var fallbackScale = Content?.XamlRoot?.RasterizationScale ?? 1.0;
-            wantWidth = wantWidth > 0 ? wantWidth : (int)Math.Round(GetSystemMetrics(0) * fallbackScale);
-            wantHeight = wantHeight > 0 ? wantHeight : (int)Math.Round(GetSystemMetrics(1) * fallbackScale);
+            var (nativeWidth, nativeHeight) = ScreenInfo.PrimaryPixels();
+            wantWidth = wantWidth > 0 ? wantWidth : nativeWidth;
+            wantHeight = wantHeight > 0 ? wantHeight : nativeHeight;
             ChildDiag($"resolution: 收到非法值，按本机 {wantWidth}x{wantHeight} 处理");
         }
 

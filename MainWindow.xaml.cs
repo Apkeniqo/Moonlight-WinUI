@@ -1071,16 +1071,13 @@ public sealed partial class MainWindow : Window
         // Tag=(0,0) 表示「本机分辨率」：取主屏物理分辨率（A 方案）
         if (_settings.Width <= 0 || _settings.Height <= 0)
         {
-            var scale = Content?.XamlRoot?.RasterizationScale ?? 1.0;
-            _settings.Width = (int)Math.Round(GetSystemMetrics(0) * scale);
-            _settings.Height = (int)Math.Round(GetSystemMetrics(1) * scale);
+            var (nativeWidth, nativeHeight) = ScreenInfo.PrimaryPixels();
+            _settings.Width = nativeWidth;
+            _settings.Height = nativeHeight;
         }
 
         PersistSettings($"{_settings.Width}×{_settings.Height}");
     }
-
-    [System.Runtime.InteropServices.DllImport("user32.dll")]
-    private static extern int GetSystemMetrics(int index);
 
     private void FpsBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {

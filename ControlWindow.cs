@@ -812,9 +812,7 @@ internal sealed partial class ControlWindow : Window
         // 否则会把 0x0 传给 ApplyStreamSettings → RequestResolution 直接失败 → 回退重连并卡住。
         if (width <= 0 || height <= 0)
         {
-            var scale = Content?.XamlRoot?.RasterizationScale ?? 1.0;
-            width = (int)Math.Round(GetSystemMetrics(0) * scale);
-            height = (int)Math.Round(GetSystemMetrics(1) * scale);
+            (width, height) = ScreenInfo.PrimaryPixels();
         }
 
         var bitrate = (int)Math.Round(_bitrate.Value) * 1000;
