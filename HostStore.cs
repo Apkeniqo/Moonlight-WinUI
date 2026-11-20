@@ -117,6 +117,24 @@ public static class HostStore
         }
 
         var existing = hosts.FirstOrDefault(h => string.Equals(h.Address, address, StringComparison.OrdinalIgnoreCase));
+
+        // 同一台主机换了 IP：主机名（hostname）相同就沿用原条目、只更新地址，
+        // 否则列表里会出现两条同一台电脑（旧的离线、新的在线），看起来像"要重新配对"。
+        if (existing is null && !string.IsNullOrWhiteSpace(name))
+        {
+            var trimmedName = name.Trim();
+            existing = hosts.FirstOrDefault(h =>
+                !string.IsNullOrWhiteSpace(h.Name) &&
+                string.Equals(h.Name, trimmedName, StringComparison.OrdinalIgnoreCase));
+
+            if (existing is not null)
+            {
+                existing.Address = address;
+                existing.Port = port;
+                return false;
+            }
+        }
+
         if (existing is null)
         {
             hosts.Add(new HostEntry

@@ -125,6 +125,62 @@ internal static class HostApi
     /// 明文 HTTP 的 /serverinfo 里取主机名（不需要客户端证书），
     /// 配对成功后用来当卡片显示名；拿不到就返回 null（界面用地址）。
     /// </summary>
+    /// <summary>
+    /// 用本机真实的客户端 uniqueid 询问主机：这台电脑是否已经和我们配对过。
+    /// Sunshine 的配对状态按客户端证书 + uniqueid 记，与 IP 无关，所以主机换 IP 后这里依然为 true，
+    /// 可以直接把新地址加进列表，不需要再走一次 PIN 配对。
+    /// </summary>
+    public static async Task<bool> IsPairedAsync(string host, int httpPort = 47989, int timeoutMs = 2500)
+    {
+        try
+        {
+            var uid = ReadClientUniqueId();
+            if (string.IsNullOrWhiteSpace(uid))
+            {
+                return false;
+            }
+
+            using var http = new HttpClient { Timeout = TimeSpan.FromMilliseconds(timeoutMs) };
+            var xml = await http.GetStringAsync(
+                $"http://{host}:{httpPort}/serverinfo?uniqueid={Uri.EscapeDataString(uid)}&uuid={Uri.EscapeDataString(uid)}")
+                .ConfigureAwait(false);
+
+            const string open = "<PairStatus>";
+            const string close = "</PairStatus>";
+            var start = xml.IndexOf(open, StringComparison.Ordinal);
+            if (start < 0)
+            {
+                return false;
+            }
+
+            start += open.Length;
+            var end = xml.IndexOf(close, start, StringComparison.Ordinal);
+            if (end <= start)
+            {
+                return false;
+            }
+
+            return xml[start..end].Trim() == "1";
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private static string ReadClientUniqueId()
+    {
+        try
+        {
+            var path = Path.Combine(AppContext.BaseDirectory, "creds", "uniqueid.txt");
+            return File.Exists(path) ? File.ReadAllText(path).Trim() : string.Empty;
+        }
+        catch
+        {
+            return string.Empty;
+        }
+    }
+
     public static async Task<string?> GetHostnameAsync(string host, int httpPort = 47989, int timeoutMs = 2500)
     {
         try

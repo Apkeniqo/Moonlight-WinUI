@@ -1487,17 +1487,28 @@ public sealed partial class MainWindow : Window
                 ipBox.IsEnabled = false;
                 portBox.IsEnabled = false;
 
-                var pin = RandomNumberGenerator.GetInt32(0, 10000).ToString("D4");
-                status.Text = $"PIN {pin} —— 请在 https://{host}:{port + 1} 的 PIN 页输入并确认…";
-
-                var (success, message) = await RunPairingAsync(host, pin, port);
-                status.Text = success ? $"配对成功：{host}" : $"配对失败：{message}";
-                succeeded = success;
-
-                if (!success)
+                // 先问主机：这台电脑是不是已经和我们配对过（按证书 + uniqueid 记，与 IP 无关）。
+                // 换 IP 的情况走这里 —— 直接加新地址，不用再输一次 PIN。
+                status.Text = "正在检查这台电脑是否已配对…";
+                if (await HostApi.IsPairedAsync(host, port))
                 {
-                    ipBox.IsEnabled = true;
-                    portBox.IsEnabled = true;
+                    status.Text = $"这台电脑已经配对过，直接把新地址 {host} 加进列表（不需要重新配对）";
+                    succeeded = true;
+                }
+                else
+                {
+                    var pin = RandomNumberGenerator.GetInt32(0, 10000).ToString("D4");
+                    status.Text = $"PIN {pin} —— 请在 https://{host}:{port + 1} 的 PIN 页输入并确认…";
+
+                    var (success, message) = await RunPairingAsync(host, pin, port);
+                    status.Text = success ? $"配对成功：{host}" : $"配对失败：{message}";
+                    succeeded = success;
+
+                    if (!success)
+                    {
+                        ipBox.IsEnabled = true;
+                        portBox.IsEnabled = true;
+                    }
                 }
             }
             finally
