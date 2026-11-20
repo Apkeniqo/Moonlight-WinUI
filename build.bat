@@ -32,7 +32,7 @@ if not defined MSBUILD (
 )
 
 echo [build] MSBuild: %MSBUILD%
-"%MSBUILD%" "%~dp0MoonlightWinUI.csproj" /p:Configuration=%CFG% /p:Platform=x64 /v:m /nologo
+"%MSBUILD%" -restore "%~dp0MoonlightWinUI.csproj" /p:Configuration=%CFG% /p:Platform=x64 /v:m /nologo
 if errorlevel 1 exit /b 1
 echo [build] OK: bin\x64\%CFG%\net8.0-windows10.0.19041.0\win-x64\MoonlightWinUI.exe
 exit /b 0

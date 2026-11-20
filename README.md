@@ -105,6 +105,7 @@ build-pairtls.bat     :: 3) pairtls.dll（OpenSSL HTTPS 客户端）
 ```
 
 - 顺序不能反：`build-native.bat` 会链接第一步产出的 `moonlight-common-c.lib` / `enet.lib`；
+- `build-mlc.bat` 只编译库（`-DBUILD_TESTING=OFF`），不编译 MLC 自带的测试工程；
 - `build-mlc.bat` 需要 **CMake**（VS 安装目录自带一份，脚本会自动查找）；
 - FFmpeg / opus 的头文件与导入库随仓库提供（`native/third_party/libs/windows`）；
 - OpenSSL 的头文件与导入库也随仓库提供（`native/openssl`）；
@@ -117,7 +118,7 @@ build-pairtls.bat     :: 3) pairtls.dll（OpenSSL HTTPS 客户端）
 
 ```powershell
 & "C:\Program Files\Microsoft Visual Studio\2022\Community\MSBuild\Current\Bin\MSBuild.exe" `
-    MoonlightWinUI.csproj /p:Configuration=Debug /p:Platform=x64
+    -restore MoonlightWinUI.csproj /p:Configuration=Debug /p:Platform=x64
 
 .\bin\x64\Debug\net8.0-windows10.0.19041.0\win-x64\MoonlightWinUI.exe
 ```
