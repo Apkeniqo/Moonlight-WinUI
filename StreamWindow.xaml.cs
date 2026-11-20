@@ -659,7 +659,7 @@ public sealed partial class StreamWindow : Window
 
             if (_controlWindow is null)
             {
-                _controlWindow = new ControlWindow(_settings, ApplyStreamSettings);
+                _controlWindow = new ControlWindow(_settings, ApplyStreamSettings, _host);
                 _controlWindow.QuitStream = () => { try { Close(); } catch { } };
                 _controlWindow.QuitStreamAndExit = () => { try { TryEndRemoteApp(); } catch { } try { Close(); } catch { } };
                 _controlWindow.Closed += (_, _) => { try { _video?.SetFollowWindow(IntPtr.Zero); } catch { } _controlWindow = null; StopPanelFollow(); };
@@ -702,7 +702,7 @@ public sealed partial class StreamWindow : Window
 
         if (_controlWindow is null)
         {
-            _controlWindow = new ControlWindow(_settings, ApplyStreamSettings);
+            _controlWindow = new ControlWindow(_settings, ApplyStreamSettings, _host);
             _controlWindow.Closed += (_, _) => _controlWindow = null;
         }
 

@@ -158,6 +158,46 @@ internal static class NativeTls
         var end = json.IndexOf('"', start);
         return end > start ? json.Substring(start, end - start) : string.Empty;
     }
+    /// <summary>
+    /// 带客户端证书的 HTTPS POST（JSON 正文）。用于 /display-scale 这类需要写操作的主机接口。
+    /// </summary>
+    public static bool TryPostJson(
+        string host, int port, string target, string json,
+        string certPath, string keyPath, out string body, out string error)
+    {
+        body = string.Empty;
+        error = string.Empty;
+
+        try
+        {
+            var payload = Encoding.UTF8.GetBytes(json);
+            var buffer = new byte[64 * 1024];
+            var errorBuffer = new byte[1024];
+            var length = PT_Request("POST", host, port, target, certPath, keyPath,
+                "application/json; charset=utf-8", "Content-Type: application/json\r\n",
+                payload, payload.Length, buffer, buffer.Length, errorBuffer, errorBuffer.Length);
+
+            if (length < 0)
+            {
+                error = Encoding.UTF8.GetString(errorBuffer).TrimEnd('\0');
+                return false;
+            }
+
+            body = Encoding.UTF8.GetString(buffer, 0, length);
+            return true;
+        }
+        catch (DllNotFoundException)
+        {
+            error = "pairtls.dll 缺失";
+            return false;
+        }
+        catch (EntryPointNotFoundException)
+        {
+            error = "pairtls.dll 版本过旧（没有 PT_Request）";
+            return false;
+        }
+    }
+
     public static bool TryGet(
         string host, int port, string target, string certPath, string keyPath,
         out string body, out string error)

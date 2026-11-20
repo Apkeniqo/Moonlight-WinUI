@@ -4,6 +4,7 @@ using System.ComponentModel;
 using System.IO;
 using System.Linq;
 using System.Net.Http;
+using System.Text.Json;
 using System.Threading.Tasks;
 using System.Xml.Linq;
 using Microsoft.UI.Xaml;
@@ -316,4 +317,178 @@ internal static class HostApi
             return new AppListResult(false, "解析应用列表失败：" + ex.Message, Array.Empty<AppEntry>());
         }
     }
+
+    // ---------------- 主机显示缩放（Sunshine 扩展：/display-scale*，47984 + 客户端证书） ----------------
+
+    private static (string Cert, string Key) ScaleCredentials() => (
+        Path.Combine(AppContext.BaseDirectory, "creds", "client.crt"),
+        Path.Combine(AppContext.BaseDirectory, "creds", "client.key"));
+
+    /// <summary>
+    /// 读取主机当前显示器的缩放信息：GET /display-scale-options。
+    /// 主机不支持、未配对或连不上时返回 null。
+    /// </summary>
+    public static DisplayScaleInfo? GetDisplayScale(
+        string host, string? displayName = null, string? deviceId = null, int httpsPort = 47984)
+    {
+        var (cert, key) = ScaleCredentials();
+
+        var target = "/display-scale-options";
+        var query = new List<string>();
+        if (!string.IsNullOrWhiteSpace(displayName))
+        {
+            query.Add("display_name=" + Uri.EscapeDataString(displayName));
+        }
+
+        if (!string.IsNullOrWhiteSpace(deviceId))
+        {
+            query.Add("device_id=" + Uri.EscapeDataString(deviceId));
+        }
+
+        if (query.Count > 0)
+        {
+            target += "?" + string.Join("&", query);
+        }
+
+        if (!NativeTls.TryGet(host, httpsPort, target, cert, key, out var json, out _))
+        {
+            return null;
+        }
+
+        try
+        {
+            using var doc = JsonDocument.Parse(json);
+            var root = doc.RootElement;
+
+            if (root.TryGetProperty("status_code", out var code) &&
+                code.ValueKind == JsonValueKind.Number && code.GetInt32() != 200)
+            {
+                return null;
+            }
+
+            return new DisplayScaleInfo(
+                ReadString(root, "display_name"),
+                ReadString(root, "device_id"),
+                ReadString(root, "friendly_name", ReadString(root, "display_name")),
+                ReadBool(root, "is_primary"),
+                ReadInt(root, "current_scale_percent"),
+                ReadInt(root, "recommended_scale_percent"),
+                ReadInts(root, "supported_scale_percents"),
+                ReadBool(root, "scale_set_supported"));
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// 设置主机显示缩放：POST /display-scale（JSON：scale_percent，可选 display_name / device_id）。
+    /// 成功后通常立即生效（不需要重连），主机要求重启显示时 RestartRequired 为 true。
+    /// </summary>
+    public static DisplayScaleResult SetDisplayScale(
+        string host, int percent, string? displayName = null, string? deviceId = null, int httpsPort = 47984)
+    {
+        var (cert, key) = ScaleCredentials();
+
+        var payload = new System.Text.Json.Nodes.JsonObject { ["scale_percent"] = percent };
+        if (!string.IsNullOrWhiteSpace(displayName))
+        {
+            payload["display_name"] = displayName;
+        }
+
+        if (!string.IsNullOrWhiteSpace(deviceId))
+        {
+            payload["device_id"] = deviceId;
+        }
+
+        if (!NativeTls.TryPostJson(host, httpsPort, "/display-scale", payload.ToJsonString(),
+                cert, key, out var json, out var requestError))
+        {
+            return new DisplayScaleResult(
+                false, null, null, Array.Empty<int>(), false, false,
+                string.IsNullOrWhiteSpace(requestError) ? "请求主机失败" : requestError, null);
+        }
+
+        try
+        {
+            using var doc = JsonDocument.Parse(json);
+            var root = doc.RootElement;
+
+            return new DisplayScaleResult(
+                ReadBool(root, "success"),
+                ReadInt(root, "previous_scale_percent"),
+                ReadInt(root, "current_scale_percent"),
+                ReadInts(root, "supported_scale_percents"),
+                ReadBool(root, "restart_required"),
+                ReadBool(root, "effective_immediately"),
+                ReadString(root, "status_message", "OK"),
+                ReadString(root, "error_code"));
+        }
+        catch
+        {
+            return new DisplayScaleResult(
+                false, null, null, Array.Empty<int>(), false, false, "解析主机响应失败", null);
+        }
+    }
+
+    private static string ReadString(JsonElement element, string name, string fallback = "")
+        => element.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String
+            ? value.GetString() ?? fallback
+            : fallback;
+
+    private static int? ReadInt(JsonElement element, string name)
+        => element.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.Number
+            ? value.GetInt32()
+            : null;
+
+    private static bool ReadBool(JsonElement element, string name)
+        => element.TryGetProperty(name, out var value) &&
+           (value.ValueKind == JsonValueKind.True || value.ValueKind == JsonValueKind.False) &&
+           value.GetBoolean();
+
+    private static int[] ReadInts(JsonElement element, string name)
+    {
+        if (!element.TryGetProperty(name, out var value) || value.ValueKind != JsonValueKind.Array)
+        {
+            return Array.Empty<int>();
+        }
+
+        var list = new List<int>();
+        foreach (var item in value.EnumerateArray())
+        {
+            if (item.ValueKind == JsonValueKind.Number)
+            {
+                list.Add(item.GetInt32());
+            }
+        }
+
+        return list.ToArray();
+    }
 }
+
+/// <summary>主机显示器缩放信息（GET /display-scale-options）。</summary>
+internal sealed record DisplayScaleInfo(
+    string DisplayName,
+    string DeviceId,
+    string FriendlyName,
+    bool IsPrimary,
+    int? CurrentScalePercent,
+    int? RecommendedScalePercent,
+    int[] SupportedScalePercents,
+    bool ScaleSetSupported)
+{
+    /// <summary>主机是否允许通过接口设置缩放（Sunshine 扩展支持且返回了档位）。</summary>
+    public bool IsAvailable => ScaleSetSupported && SupportedScalePercents.Length > 0;
+}
+
+/// <summary>设置显示缩放的结果（POST /display-scale）。</summary>
+internal sealed record DisplayScaleResult(
+    bool Success,
+    int? PreviousScalePercent,
+    int? CurrentScalePercent,
+    int[] SupportedScalePercents,
+    bool RestartRequired,
+    bool EffectiveImmediately,
+    string StatusMessage,
+    string? ErrorCode);

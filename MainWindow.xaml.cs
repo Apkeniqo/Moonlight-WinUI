@@ -1781,6 +1781,12 @@ public sealed partial class MainWindow : Window
             var outgoingPage = showSettings ? (FrameworkElement)ComputersPage : SettingsHost;
             SwitchPage(outgoingPage, incomingPage);
 
+            // 进设置页时刷新「主机显示缩放」的主机列表
+            if (showSettings)
+            {
+                RefreshScaleHosts();
+            }
+
             // 回到电脑页时重新探一遍在线状态
             if (!showSettings)
             {
@@ -1795,6 +1801,140 @@ public sealed partial class MainWindow : Window
             };
         }
     }
+    // ---------------- 主机显示缩放（Sunshine 扩展：/display-scale*） ----------------
+
+    private string? _scaleHost;
+    private DisplayScaleInfo? _scaleInfo;
+    private bool _scaleApplying;
+
+    /// <summary>设置页打开时刷新主机下拉，并读取第一台主机的缩放档位。</summary>
+    private void RefreshScaleHosts()
+    {
+        var previous = (ScaleHostBox.SelectedItem as ComboBoxItem)?.Tag as string;
+
+        ScaleHostBox.SelectionChanged -= ScaleHostBox_SelectionChanged;
+        ScaleHostBox.Items.Clear();
+        foreach (var host in _hosts)
+        {
+            ScaleHostBox.Items.Add(new ComboBoxItem { Content = host.DisplayName, Tag = host.Address });
+        }
+        ScaleHostBox.SelectionChanged += ScaleHostBox_SelectionChanged;
+
+        if (ScaleHostBox.Items.Count == 0)
+        {
+            HostScaleBox.Items.Clear();
+            HostScaleBox.IsEnabled = false;
+            HostScaleHint.Text = "还没有已配对的电脑，先在「配对电脑」里添加一台。";
+            return;
+        }
+
+        var index = 0;
+        if (!string.IsNullOrEmpty(previous))
+        {
+            for (var i = 0; i < ScaleHostBox.Items.Count; i++)
+            {
+                if (ScaleHostBox.Items[i] is ComboBoxItem item && (string?)item.Tag == previous)
+                {
+                    index = i;
+                    break;
+                }
+            }
+        }
+
+        ScaleHostBox.SelectedIndex = index;   // 触发读取
+    }
+
+    private async void ScaleHostBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (!_settingsReady) { return; }
+
+        var host = (ScaleHostBox.SelectedItem as ComboBoxItem)?.Tag as string;
+        if (string.IsNullOrWhiteSpace(host)) { return; }
+
+        _scaleHost = host;
+        _scaleInfo = null;
+        HostScaleBox.Items.Clear();
+        HostScaleBox.IsEnabled = false;
+        HostScaleRing.IsActive = true;
+        HostScaleHint.Text = $"正在读取 {host} 的显示缩放…";
+
+        var info = await System.Threading.Tasks.Task.Run(() => HostApi.GetDisplayScale(host));
+
+        HostScaleRing.IsActive = false;
+        _scaleInfo = info;
+
+        if (info is null)
+        {
+            HostScaleHint.Text = "读取失败：主机离线、未配对，或该主机不支持显示缩放接口。";
+            return;
+        }
+
+        if (!info.IsAvailable)
+        {
+            var current = info.CurrentScalePercent is int value ? $"{value}%" : "未知";
+            HostScaleHint.Text = $"主机不支持通过接口调整缩放（当前 {current}）。";
+            return;
+        }
+
+        _scaleApplying = true;
+        foreach (var percent in info.SupportedScalePercents)
+        {
+            HostScaleBox.Items.Add(new ComboBoxItem { Content = $"{percent}%", Tag = percent });
+        }
+
+        for (var i = 0; i < HostScaleBox.Items.Count; i++)
+        {
+            if (HostScaleBox.Items[i] is ComboBoxItem item && item.Tag is int percent &&
+                percent == info.CurrentScalePercent)
+            {
+                HostScaleBox.SelectedIndex = i;
+                break;
+            }
+        }
+        _scaleApplying = false;
+
+        HostScaleBox.IsEnabled = true;
+        HostScaleHint.Text = $"当前 {info.CurrentScalePercent ?? 0}% · {info.FriendlyName}（{info.DisplayName}）";
+    }
+
+    private async void HostScaleBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (!_settingsReady || _scaleApplying || _scaleInfo is null || string.IsNullOrWhiteSpace(_scaleHost))
+        {
+            return;
+        }
+
+        if ((HostScaleBox.SelectedItem as ComboBoxItem)?.Tag is not int percent) { return; }
+        if (percent == _scaleInfo.CurrentScalePercent) { return; }
+
+        var host = _scaleHost;
+        var displayName = _scaleInfo.DisplayName;
+        var deviceId = _scaleInfo.DeviceId;
+
+        HostScaleRing.IsActive = true;
+        HostScaleHint.Text = $"正在把 {host} 的显示缩放设置为 {percent}%…";
+
+        var result = await System.Threading.Tasks.Task.Run(
+            () => HostApi.SetDisplayScale(host, percent, displayName, deviceId));
+
+        HostScaleRing.IsActive = false;
+
+        if (result is null || !result.Success)
+        {
+            HostScaleHint.Text = "设置失败：" + (result?.StatusMessage ?? "主机无响应");
+            return;
+        }
+
+        var now = result.CurrentScalePercent ?? percent;
+        HostScaleHint.Text = result.RestartRequired
+            ? $"已接受 {percent}%，主机需要重启显示后才生效。"
+            : result.EffectiveImmediately
+                ? $"已设置为 {now}%（立即生效）"
+                : $"主机已接受 {percent}%，稍后生效。";
+
+        _scaleInfo = _scaleInfo with { CurrentScalePercent = now };
+    }
+
     /// <summary>应用卡片大小跟着整页高度走（两行排列，保持 170:240 封面比例）。</summary>
     /// <summary>把「应用卡片行数」应用到面板上（1 或 2 行），并重算卡片尺寸。</summary>
     private void ApplyAppCardRows()

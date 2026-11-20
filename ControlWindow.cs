@@ -1,4 +1,5 @@
 using System;
+using System.Threading.Tasks;
 using Microsoft.UI;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
@@ -17,6 +18,14 @@ internal sealed partial class ControlWindow : Window
 {
     private readonly StreamSettings _settings;
     private readonly Action<int, int, int, bool> _apply;
+    private readonly string _host;
+
+    // 主机显示缩放（Sunshine 扩展：/display-scale*）
+    private ComboBox? _hostScale;
+    private ProgressRing? _hostScaleRing;
+    private TextBlock? _hostScaleHint;
+    private DisplayScaleInfo? _scaleInfo;
+    private bool _scaleApplying;
 
     private readonly ComboBox _resolution = new() { HorizontalAlignment = HorizontalAlignment.Stretch };
     private readonly Slider _bitrate = new() { Minimum = 5, Maximum = 200, StepFrequency = 1 };
@@ -73,10 +82,11 @@ internal sealed partial class ControlWindow : Window
     private long _shownAt;
     private bool _seenActivated;
 
-    public ControlWindow(StreamSettings settings, Action<int, int, int, bool> applyAction)
+    public ControlWindow(StreamSettings settings, Action<int, int, int, bool> applyAction, string host = "")
     {
         _settings = settings;
         _apply = applyAction;
+        _host = host ?? string.Empty;
 
         Title = "传输控制";
 
@@ -133,6 +143,31 @@ internal sealed partial class ControlWindow : Window
         // 右栏：全屏 + 说明
         var right = new StackPanel { Spacing = 8 };
         right.Children.Add(_fullScreen);
+
+        // 主机显示缩放（DPI）：主机支持时可直接改，立即生效、不需要重连
+        var scaleRow = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
+        scaleRow.Children.Add(Label("主机缩放"));
+        _hostScale = new ComboBox { Width = 110, IsEnabled = false, PlaceholderText = "读取…" };
+        _hostScale.SelectionChanged += HostScale_SelectionChanged;
+        scaleRow.Children.Add(_hostScale);
+        _hostScaleRing = new ProgressRing
+        {
+            Width = 16,
+            Height = 16,
+            IsActive = false,
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+        scaleRow.Children.Add(_hostScaleRing);
+        right.Children.Add(scaleRow);
+
+        _hostScaleHint = new TextBlock
+        {
+            FontSize = 11,
+            Opacity = 0.55,
+            Foreground = new SolidColorBrush(Colors.White),
+            TextWrapping = TextWrapping.Wrap,
+        };
+        right.Children.Add(_hostScaleHint);
         right.Children.Add(new TextBlock
         {
             Text = "改分辨率会重连，码率即时生效。",
@@ -335,6 +370,95 @@ internal sealed partial class ControlWindow : Window
     [System.Runtime.InteropServices.DllImport("user32.dll")] private static extern bool IsWindowVisible(IntPtr h);
 
     // 弹窗生命周期诊断：写 popup-diag.log。崩溃时至少能看出最后一步走到哪。
+    /// <summary>读取主机当前显示缩放与档位（主机不支持/离线时禁用下拉）。</summary>
+    private async Task LoadHostScaleAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_host) || _hostScale is null || _hostScaleHint is null)
+        {
+            return;
+        }
+
+        if (_hostScaleRing is not null) { _hostScaleRing.IsActive = true; }
+        _hostScaleHint.Text = "正在读取主机缩放…";
+
+        var info = await Task.Run(() => HostApi.GetDisplayScale(_host));
+
+        if (_hostScaleRing is not null) { _hostScaleRing.IsActive = false; }
+        _scaleInfo = info;
+        _hostScale.Items.Clear();
+
+        if (info is null)
+        {
+            _hostScaleHint.Text = "读取失败（主机离线或未配对）";
+            return;
+        }
+
+        if (!info.IsAvailable)
+        {
+            var current = info.CurrentScalePercent is int value ? $"{value}%" : "未知";
+            _hostScaleHint.Text = $"主机不支持调整缩放（当前 {current}）";
+            return;
+        }
+
+        _scaleApplying = true;
+        foreach (var percent in info.SupportedScalePercents)
+        {
+            _hostScale.Items.Add(new ComboBoxItem { Content = $"{percent}%", Tag = percent });
+        }
+
+        for (var i = 0; i < _hostScale.Items.Count; i++)
+        {
+            if (_hostScale.Items[i] is ComboBoxItem item && item.Tag is int percent &&
+                percent == info.CurrentScalePercent)
+            {
+                _hostScale.SelectedIndex = i;
+                break;
+            }
+        }
+        _scaleApplying = false;
+
+        _hostScale.IsEnabled = true;
+        _hostScaleHint.Text = $"当前 {info.CurrentScalePercent ?? 0}% · {info.FriendlyName}";
+    }
+
+    private async void HostScale_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (_scaleApplying || _scaleInfo is null || _hostScale is null || _hostScaleHint is null)
+        {
+            return;
+        }
+
+        if ((_hostScale.SelectedItem as ComboBoxItem)?.Tag is not int percent) { return; }
+        if (percent == _scaleInfo.CurrentScalePercent) { return; }
+
+        var displayName = _scaleInfo.DisplayName;
+        var deviceId = _scaleInfo.DeviceId;
+
+        _scaleApplying = true;
+        if (_hostScaleRing is not null) { _hostScaleRing.IsActive = true; }
+        _hostScaleHint.Text = $"正在设置为 {percent}%…";
+
+        var result = await Task.Run(() => HostApi.SetDisplayScale(_host, percent, displayName, deviceId));
+
+        if (_hostScaleRing is not null) { _hostScaleRing.IsActive = false; }
+        _scaleApplying = false;
+
+        if (result is null || !result.Success)
+        {
+            _hostScaleHint.Text = "设置失败：" + (result?.StatusMessage ?? "主机无响应");
+            return;
+        }
+
+        var now = result.CurrentScalePercent ?? percent;
+        _hostScaleHint.Text = result.RestartRequired
+            ? $"已接受 {percent}%，主机需重启显示"
+            : result.EffectiveImmediately
+                ? $"已设置为 {now}%"
+                : $"已接受 {percent}%，稍后生效";
+
+        _scaleInfo = _scaleInfo with { CurrentScalePercent = now };
+    }
+
     private static void Diag(string line)
     {
         try
@@ -386,6 +510,9 @@ internal sealed partial class ControlWindow : Window
         // 面板显示期间置顶，关闭时恢复。
         SetWindowPos(PanelHwnd, HwndTopmost, 0, 0, 0, 0, SwpNoMove | SwpNoSize | SwpNoActivate);
         Diag($"ShowAt topmost fg=0x{GetForegroundWindow().ToInt64():X} self=0x{PanelHwnd.ToInt64():X}");
+
+        // 每次打开都刷新一次（主机可能在别处改过缩放）
+        _ = LoadHostScaleAsync();
 
         // 失焦关闭：轮询前台窗口，比 Activated 事件可靠（WinUI 有时不派发 Deactivated）
         if (_focusWatch is null)
