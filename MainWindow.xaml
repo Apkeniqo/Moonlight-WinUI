@@ -1,0 +1,301 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Window
+    x:Class="MoonlightWinUI.MainWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="using:MoonlightWinUI">
+
+    <Grid x:Name="RootGrid">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <Grid x:Name="AppTitleBar" Grid.Row="0" Height="48">
+            <TextBlock x:Name="TitleText" Text="Moonlight V+ for PC" VerticalAlignment="Center" Margin="12,0" />
+
+        </Grid>
+
+        <NavigationView x:Name="Nav" Grid.Row="1" IsSettingsVisible="True" PaneDisplayMode="Left"
+                        OpenPaneLength="220" IsBackButtonVisible="Collapsed"
+                        SelectionChanged="Nav_SelectionChanged" ItemInvoked="Nav_ItemInvoked">
+            <NavigationView.MenuItems>
+                <NavigationViewItem Content="电脑" Tag="computers" IsSelected="True">
+                    <NavigationViewItem.Icon>
+                        <FontIcon Glyph="&#xE7F4;" />
+                    </NavigationViewItem.Icon>
+                </NavigationViewItem>
+                <NavigationViewItem Content="配对电脑" Tag="pair">
+                    <NavigationViewItem.Icon>
+                        <FontIcon Glyph="&#xE710;" />
+                    </NavigationViewItem.Icon>
+                </NavigationViewItem>
+            </NavigationView.MenuItems>
+            <Grid Padding="24">
+                <!-- ================= 设备页 ================= -->
+                <Grid x:Name="ComputersPage">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+
+                    <Grid Grid.Row="0">
+                        <StackPanel Spacing="2" VerticalAlignment="Center">
+                            <TextBlock Text="电脑" FontSize="28" FontWeight="SemiBold" />
+                            <TextBlock Text="选择一台已配对的电脑开始串流" FontSize="12" Opacity="0.6" />
+                        </StackPanel>
+                    </Grid>
+                    <!-- 电脑卡片：左侧偏上，横向排列 -->
+                    <ItemsControl x:Name="DeviceList" Grid.Row="1" HorizontalContentAlignment="Stretch"
+                                  HorizontalAlignment="Stretch" VerticalAlignment="Top"
+                                  Margin="0,56,0,0">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <local:AdaptiveWrapPanel ItemWidth="300" MaxPanelWidth="0" Spacing="10" />
+                            </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                    </ItemsControl>
+                </Grid>
+
+                <!-- ================= 主机详情页（点设备卡片进来） ================= -->
+                <Grid x:Name="HostPage" RowSpacing="12" Visibility="Collapsed">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+
+                    <StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="10">
+                        <Button Content="← 返回" Click="HostBackButton_Click" />
+                        <TextBlock x:Name="HostTitle" FontSize="20" FontWeight="SemiBold"
+                                   VerticalAlignment="Center" />
+                        <TextBlock x:Name="HostStatus" Opacity="0.6" VerticalAlignment="Center" />
+                        <Button Content="刷新" Click="HostRefreshButton_Click" />
+                    </StackPanel>
+
+                    <StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="8">
+                        <ProgressRing x:Name="HostLoading" IsActive="False" Width="20" Height="20" />
+                        <TextBlock x:Name="HostMessage" Opacity="0.8" FontSize="12"
+                                   TextWrapping="Wrap" VerticalAlignment="Center" />
+                    </StackPanel>
+
+                    <!-- 单行横向卡片：垂直居中；滚轮横滚；两侧渐隐见 UpdateEdgeFade -->
+                    <ScrollViewer x:Name="AppScroll" Grid.Row="0" Grid.RowSpan="3" Margin="0,44,0,0"
+                                  VerticalAlignment="Center"
+                                  HorizontalScrollBarVisibility="Hidden"
+                                  VerticalScrollBarVisibility="Disabled"
+                                  HorizontalScrollMode="Enabled"
+                                  VerticalScrollMode="Disabled"
+                                  HorizontalContentAlignment="Center"
+                                  PointerWheelChanged="AppScroll_PointerWheelChanged">
+                        <ItemsControl x:Name="AppList" Padding="16">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <local:HorizontalGridPanel Rows="2" Spacing="20" />
+                                </ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="local:AppEntry">
+                                    <StackPanel Spacing="6" Padding="0,0,0,12" Margin="0,8,0,8"
+                                                Width="{x:Bind CardWidth, Mode=OneWay}"
+                                                AutomationProperties.Name="{x:Bind Title}"
+                                                Tapped="AppCard_Tapped">
+                                        <Border Width="{x:Bind CardWidth, Mode=OneWay}" Height="{x:Bind CardHeight, Mode=OneWay}" CornerRadius="8"
+                                                Background="{x:Bind CardBrush, Mode=OneWay}"
+                                                Loaded="AppCard_Loaded">
+                                            <Grid>
+                                                <!-- 默认图：主机没给封面时显示首字 -->
+                                                <TextBlock Text="{x:Bind Initial}" FontSize="56" Opacity="0.22"
+                                                           HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                                <Image Source="{x:Bind BoxArt, Mode=OneWay}"
+                                                       Stretch="UniformToFill" />
+
+                                                <!-- 运行中：整张封面压暗 + 居中深灰三角 -->
+                                                <Grid Visibility="{x:Bind BadgeVisibility, Mode=OneWay}">
+                                                    <Border Background="#73000000" CornerRadius="8" />
+                                                    <Border Width="52" Height="52" CornerRadius="26"
+                                                            Background="#CC2E2E2E"
+                                                            HorizontalAlignment="Center" VerticalAlignment="Center"
+                                                            ToolTipService.ToolTip="主机正在运行这个应用">
+                                                        <FontIcon Glyph="&#xE768;" FontSize="22" Foreground="#C9C9C9" />
+                                                    </Border>
+                                                </Grid>
+                                            </Grid>
+                                        </Border>
+                                        <TextBlock Text="{x:Bind Title}" FontSize="14" MaxLines="1"
+                                                   TextTrimming="CharacterEllipsis" />
+                                    </StackPanel>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </ScrollViewer>
+                </Grid>
+
+                <!-- ================= 设置页 ================= -->
+                <ScrollViewer x:Name="SettingsHost" Visibility="Collapsed"
+                              VerticalScrollBarVisibility="Auto"
+                              HorizontalScrollBarVisibility="Disabled"
+                              HorizontalScrollMode="Disabled">
+                    <StackPanel x:Name="SettingsPage" Spacing="16">
+                    <StackPanel Spacing="4">
+                        <TextBlock Text="串流设置" FontSize="20" FontWeight="SemiBold" />
+                        <TextBlock Text="下一次连接生效。主机会按自己的能力调整实际编码参数。"
+                                   Opacity="0.6" FontSize="12" />
+                    </StackPanel>
+
+                    <StackPanel Orientation="Horizontal" Spacing="12">
+                        <TextBlock Text="窗口材质" Width="110" VerticalAlignment="Center" />
+                        <ComboBox x:Name="BackdropBox" Width="200" SelectedIndex="0"
+                                  SelectionChanged="BackdropBox_SelectionChanged">
+                            <ComboBoxItem Content="Mica" />
+                            <ComboBoxItem Content="Mica Alt" />
+                            <ComboBoxItem Content="Acrylic" />
+                            <ComboBoxItem Content="Solid" />
+                        </ComboBox>
+                    </StackPanel>
+
+                    <StackPanel Orientation="Horizontal" Spacing="12">
+                        <TextBlock Text="应用卡片行数" Width="110" VerticalAlignment="Center" />
+                        <ComboBox x:Name="AppRowsBox" Width="200" SelectedIndex="1"
+                                  SelectionChanged="AppRowsBox_SelectionChanged">
+                            <ComboBoxItem Content="单行" />
+                            <ComboBoxItem Content="双行" />
+                        </ComboBox>
+                    </StackPanel>
+
+                    <StackPanel Orientation="Horizontal" Spacing="12">
+                        <TextBlock Text="分辨率" Width="110" VerticalAlignment="Center" />
+                        <ComboBox x:Name="ResolutionBox" Width="200"
+                                  SelectionChanged="ResolutionBox_SelectionChanged" />
+                        <Button Content="自定义" Click="CustomResolutionButton_Click" />
+                    </StackPanel>
+
+                    <StackPanel Orientation="Horizontal" Spacing="12">
+                        <TextBlock Text="刷新率" Width="110" VerticalAlignment="Center" />
+                        <ComboBox x:Name="FpsBox" Width="200"
+                                  SelectionChanged="FpsBox_SelectionChanged" />
+                        <Button Content="自定义" Click="CustomFpsButton_Click" />
+                    </StackPanel>
+
+                    <StackPanel Orientation="Horizontal" Spacing="12">
+                        <TextBlock Text="码率" Width="110" VerticalAlignment="Center" />
+                        <NumberBox x:Name="BitrateBox" Width="200" Minimum="1" Maximum="200"
+                                   SpinButtonPlacementMode="Compact" ValueChanged="BitrateBox_ValueChanged" />
+                        <TextBlock x:Name="BitrateText" VerticalAlignment="Center" Opacity="0.8"
+                                   Text="20 Mbps" />
+                    </StackPanel>
+
+                    <StackPanel Orientation="Horizontal" Spacing="12">
+                        <TextBlock Text="编码" Width="110" VerticalAlignment="Center" />
+                        <ComboBox x:Name="CodecBox" Width="200"
+                                  SelectionChanged="CodecBox_SelectionChanged">
+                            <ComboBoxItem Content="自动" />
+                            <ComboBoxItem Content="H.264 (AVC)" />
+                            <ComboBoxItem Content="HEVC (H.265)" />
+                            <ComboBoxItem Content="AV1（软件解码）" />
+                        </ComboBox>
+                    </StackPanel>
+
+                    <StackPanel Orientation="Horizontal" Spacing="12">
+                        <TextBlock Text="窗口模式" Width="110" VerticalAlignment="Center" />
+                        <ComboBox x:Name="WindowModeBox" Width="200"
+                                  SelectionChanged="WindowModeBox_SelectionChanged">
+                            <ComboBoxItem Content="窗口" />
+                            <ComboBoxItem Content="全屏" />
+                        </ComboBox>
+                    </StackPanel>
+
+
+                    <ToggleSwitch x:Name="AutoLockSwitch" Header="连接后自动锁定指针"
+                                  OnContent="开" OffContent="关"
+                                  Toggled="AutoLockSwitch_Toggled" />
+
+                    <ToggleSwitch x:Name="SwapMouseSwitch" Header="交换鼠标左右键"
+                                  OnContent="开" OffContent="关"
+                                  Toggled="SwapMouseSwitch_Toggled" />
+
+
+                    <ToggleSwitch x:Name="ReverseScrollSwitch" Header="反转滚轮方向"
+                                  OnContent="开" OffContent="关"
+                                  Toggled="ReverseScrollSwitch_Toggled" />
+
+
+                    <ToggleSwitch x:Name="ClipboardImageSwitch" Header="同步剪贴板图片（PNG）"
+                                  OnContent="开" OffContent="关"
+                                  Toggled="ClipboardImageSwitch_Toggled" />
+
+                    <ToggleSwitch x:Name="PerfOverlaySwitch" Header="显示性能信息"
+                                  OnContent="开" OffContent="关"
+                                  Toggled="PerfOverlaySwitch_Toggled" />
+
+                    <StackPanel Orientation="Horizontal" Spacing="12">
+                        <TextBlock Text="性能信息透明度" Width="110" VerticalAlignment="Center" />
+                        <Slider x:Name="OverlayOpacitySlider" Width="200" Minimum="20" Maximum="100"
+                                StepFrequency="5" ValueChanged="OverlayOpacitySlider_ValueChanged" />
+                        <TextBlock x:Name="OverlayOpacityText" VerticalAlignment="Center" Opacity="0.8"
+                                   Text="100%" />
+                    </StackPanel>
+
+                    <StackPanel Orientation="Horizontal" Spacing="12">
+                        <TextBlock Text="性能信息位置" Width="110" VerticalAlignment="Center" />
+                        <ComboBox x:Name="OverlayPositionBox" Width="200"
+                                  SelectionChanged="OverlayPositionBox_SelectionChanged">
+                            <ComboBoxItem Content="左上" />
+                            <ComboBoxItem Content="上中" />
+                            <ComboBoxItem Content="右上" />
+                            <ComboBoxItem Content="左下" />
+                            <ComboBoxItem Content="下中" />
+                            <ComboBoxItem Content="右下" />
+                        </ComboBox>
+                    </StackPanel>
+
+                    <StackPanel Orientation="Horizontal" Spacing="12">
+                        <Button Content="显示项目…" Click="OverlayItemsButton_Click" />
+                        <StackPanel x:Name="CornerRow" Orientation="Horizontal" Spacing="8">
+                            <TextBlock Text="四角" VerticalAlignment="Center" Opacity="0.8" />
+                            <ComboBox x:Name="CornerStyleBox" Width="120" SelectedIndex="0"
+                                      SelectionChanged="CornerStyleBox_SelectionChanged">
+                                <ComboBoxItem Content="单行" />
+                                <ComboBoxItem Content="多行" />
+                            </ComboBox>
+                        </StackPanel>
+                    </StackPanel>
+
+                    <ToggleSwitch x:Name="KeepAwakeSwitch" Header="串流时保持屏幕常亮"
+                                  OnContent="开" OffContent="关"
+                                  Toggled="KeepAwakeSwitch_Toggled" />
+
+                    <ToggleSwitch x:Name="QuitAfterSwitch" Header="串流结束后退出应用"
+                                  OnContent="开" OffContent="关"
+                                  Toggled="QuitAfterSwitch_Toggled" />
+
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <Button Content="恢复默认" Click="ResetSettings_Click" />
+                        <Button Content="应用并重新连接" Click="ApplyAndReconnect_Click" />
+                        <TextBlock x:Name="SettingsStatusText" VerticalAlignment="Center"
+                                   Opacity="0.7" FontSize="12" />
+                    </StackPanel>
+
+                    <TextBlock x:Name="SettingsPathText" Opacity="0.45" FontSize="12"
+                               TextWrapping="Wrap" />
+                    </StackPanel>
+                </ScrollViewer>
+
+                <!-- 电脑页的「刷新在线状态」按钮：贴内容区右上角，只在这一页显示 -->
+                <StackPanel x:Name="RefreshHostsPanel" Orientation="Horizontal" Spacing="8"
+                            HorizontalAlignment="Right" VerticalAlignment="Top">
+                    <ProgressRing x:Name="HostsProbeRing" Width="16" Height="16" IsActive="False"
+                                  VerticalAlignment="Center" />
+                    <Button x:Name="RefreshHostsButton" Click="RefreshHostsButton_Click"
+                            VerticalAlignment="Center"
+                            ToolTipService.ToolTip="重新探测每台电脑是否在线">
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <FontIcon Glyph="&#xE72C;" FontSize="14" />
+                            <TextBlock Text="刷新" />
+                        </StackPanel>
+                    </Button>
+                </StackPanel>
+            </Grid>
+        </NavigationView>
+    </Grid>
+</Window>

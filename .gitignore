@@ -1,0 +1,45 @@
+# ---- 构建产物 ----
+bin/
+obj/
+native/mlc-build/
+native/redist/
+
+# ---- native 编译中间/输出 ----
+native/*.obj
+native/*.exp
+native/*.lib
+native/*.pdb
+native/*.dll
+native/*.exe
+
+# ---- 第三方预编译库（体积大，见 README 说明）----
+native/openssl/
+SDL2.dll
+SDL3.dll
+
+# ---- 凭据（绝对不能进仓库）----
+native/creds/
+**/creds/
+*.crt
+*.key
+*.pem
+*.pfx
+uniqueid.txt
+
+# ---- 运行时配置与日志 ----
+settings.json
+*.log
+
+# ---- 测试素材与截图 ----
+*.mp4
+*.h264
+shot-*.png
+
+# ---- 开发过程记录（含内网信息）----
+HANDOFF.md
+
+# ---- IDE / 系统 ----
+.vs/
+*.user
+Thumbs.db
+.DS_Store
