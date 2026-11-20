@@ -99,11 +99,16 @@ MoonlightWinUI (C# / WinUI 3)
 
 ```bat
 cd native
-build-native.bat      :: mlrender.dll
-build-pairtls.bat     :: pairtls.dll（OpenSSL HTTPS 客户端）
+build-mlc.bat         :: 1) 编译 moonlight-common-c + enet → native/mlc-build
+build-native.bat      :: 2) mlrender.dll
+build-pairtls.bat     :: 3) pairtls.dll（OpenSSL HTTPS 客户端）
 ```
 
-两个脚本都会调用 VS 的 `vcvars64.bat` 初始化编译环境，产物输出到 `native/` 下。
+- 顺序不能反：`build-native.bat` 会链接第一步产出的 `moonlight-common-c.lib` / `enet.lib`；
+- `build-mlc.bat` 需要 **CMake**（VS 安装目录自带一份，脚本会自动查找）；
+- FFmpeg / opus 的头文件与导入库随仓库提供（`native/third_party/libs/windows`）；
+- OpenSSL 的头文件与导入库也随仓库提供（`native/openssl`）；
+- 脚本会自动定位 VS 的 `vcvars64.bat`，产物输出到 `native/` 下。
 
 ### 2. 编译主程序
 
@@ -129,7 +134,6 @@ build-pairtls.bat     :: pairtls.dll（OpenSSL HTTPS 客户端）
 | `SDL2.dll` + `SDL3.dll` | 根目录 | Moonlight 的 `SDL2.dll` 是 sdl2-compat，**必须与 SDL3.dll 同时存在**，只放一个会导致首次调用卡死 |
 | `native/creds/` | `client.crt` `client.key` `uniqueid.txt` | 客户端配对身份；可从已有 Moonlight Qt 版安装目录复制，或在应用内首次配对时生成 |
 | `test-1080p60.mp4` | 可选 | 演示模式（`ML_AUTOSTART=demo`）用的测试片源 |
-| `native/openssl/` | 可选 | 编译 `pairtls.dll` 所需的 OpenSSL 头文件与库 |
 
 缺失这些文件时，`MoonlightWinUI.csproj` 会自动跳过对应项，主程序仍可编译（但运行时会缺少解码/配对能力）。
 

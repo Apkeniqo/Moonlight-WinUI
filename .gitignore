@@ -12,8 +12,8 @@ native/*.pdb
 native/*.dll
 native/*.exe
 
-# ---- 第三方预编译库（体积大，见 README 说明）----
-native/openssl/
+# ---- 第三方预编译库 ----
+# native/openssl 已入库（native 编译必需的头文件与导入库，3.8MB）
 SDL2.dll
 SDL3.dll
 
