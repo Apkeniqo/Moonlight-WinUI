@@ -227,6 +227,18 @@ public sealed class VideoSurface : IDisposable
     [DllImport(NativeDll, CallingConvention = CallingConvention.Cdecl)]
     private static extern void ML_SetMouseSensitivity(double value);
 
+    [DllImport(NativeDll, CallingConvention = CallingConvention.Cdecl)]
+    private static extern int ML_GetMouseButtons();
+
+    /// <summary>
+    /// 原生子窗口当前的鼠标按键位图（1 左 / 2 右 / 4 中）。
+    /// Win32 串流窗口模式下 WinUI 面板收不到 PointerPressed，只能从 native 问。
+    /// </summary>
+    public int GetMouseButtons()
+    {
+        try { return ML_GetMouseButtons(); } catch { return 0; }
+    }
+
     /// <summary>锁定模式的相对位移倍率（1.0 = 原始，调小抵消主机鼠标加速）。</summary>
     public void SetMouseSensitivity(double value)
     {

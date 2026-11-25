@@ -1211,7 +1211,7 @@ public sealed partial class StreamWindow : Window
         // 直接按单拍切会让锁定/解锁来回跳 → 必须连续 750ms（3 拍）确认才进锁定。
         // 鼠标有键按着时（拖窗口、框选）一律不累计：这种场景主机光标本来就会短暂隐藏，
         // 一旦误进锁定，相对位移会把指针甩到很远的地方。
-        if (!state.Visible && _mouseButtonsDown.Count == 0)
+        if (!state.Visible && _video.GetMouseButtons() == 0)
         {
             _cursorHiddenTicks++;
         }

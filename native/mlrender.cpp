@@ -2052,6 +2052,15 @@ extern "C" __declspec(dllexport) int ML_HostChildWin32(void* parent, int w, int 
     return 0;
 }
 // 让外层窗口也能用同一套主机光标（避免鼠标移到标题栏/边框时指针跳回系统箭头）
+extern "C" __declspec(dllexport) int ML_GetMouseButtons(void)
+{
+    int mask = 0;
+    if (g_leftDown)  { mask |= 1; }
+    if (g_rightDown) { mask |= 2; }
+    if (g_midDown)   { mask |= 4; }
+    return mask;
+}
+
 extern "C" __declspec(dllexport) void ML_SetMouseSensitivity(double value)
 {
     if (value < 0.1)
