@@ -222,6 +222,7 @@ public sealed partial class StreamWindow : Window
             _renderWatchdog?.Stop();
             _clipboardTimer?.Stop();
             _connWatch?.Stop();
+            _pointerTimer?.Stop();
             NativeMouse.RestoreSystemCursor();
             _video?.Dispose();
             _video = null;
@@ -1004,31 +1005,6 @@ public sealed partial class StreamWindow : Window
 
         var state = _video.GetCursorState();
 
-        // 诊断：每 2 秒记一次光标可见性/锁定状态（排查"游戏里视角不动"用）
-        {
-            var nowTick = Environment.TickCount64;
-            if (nowTick - _lastCursorDiagTick > 2000)
-            {
-                _lastCursorDiagTick = nowTick;
-                ChildDiag($"cursorTick visible={state.Visible} locked={_pointerLocked} applied={_cursorModeApplied}");
-            }
-        }
-
-        // 自动跟随主机光标状态：
-        //   主机不画光标 → 游戏内（游戏把指针藏了）→ 进入指针锁定（相对位移 + 夹在画面内）
-        //   主机画光标   → 桌面 / 有 UI 的应用 → 退出锁定，鼠标自由移到串流窗口外
-        if (!state.Visible && !_pointerLocked)
-        {
-            if (TryEnterPointerLock(force: false, gameAuto: true))
-            {
-                ChildDiag("pointerLock=1（主机光标隐藏 → 游戏内，自动锁定）");
-            }
-        }
-        else if (state.Visible && _pointerLocked && !_pointerLockForced)
-        {
-            ExitPointerLock("host cursor visible（桌面/UI）");
-        }
-
         if (!state.Visible)
         {
             NativeMouse.HideStreamCursor();
@@ -1188,6 +1164,54 @@ public sealed partial class StreamWindow : Window
 
         return true;
     }
+    /// <summary>启动"游戏内自动锁定"检测（250ms）。</summary>
+    private void StartPointerAutoLock()
+    {
+        _pointerTimer ??= new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(250) };
+        if (_pointerTimer.IsEnabled)
+        {
+            return;
+        }
+
+        _pointerTimer.Tick += PointerAutoLock_Tick;
+        _pointerTimer.Start();
+    }
+
+    private void PointerAutoLock_Tick(object? sender, object e)
+    {
+        if (_closed || _demo || _video is null)
+        {
+            _pointerTimer?.Stop();
+            return;
+        }
+
+        var state = _video.GetCursorState();
+
+        // 诊断：每 2 秒一刀
+        {
+            var nowTick = Environment.TickCount64;
+            if (nowTick - _lastCursorDiagTick > 2000)
+            {
+                _lastCursorDiagTick = nowTick;
+                ChildDiag($"cursorTick visible={state.Visible} locked={_pointerLocked} applied={_cursorModeApplied}");
+            }
+        }
+
+        // 主机不画光标 → 游戏内（游戏把指针藏了）→ 锁定：相对位移 + 夹在画面内 + 隐藏本地光标
+        // 主机画光标   → 桌面 / 有 UI 的应用 → 解锁，鼠标自由移到串流窗口外
+        if (!state.Visible && !_pointerLocked)
+        {
+            if (TryEnterPointerLock(force: false, gameAuto: true))
+            {
+                ChildDiag("pointerLock=1（主机光标隐藏 → 游戏内，自动锁定）");
+            }
+        }
+        else if (state.Visible && _pointerLocked && !_pointerLockForced)
+        {
+            ExitPointerLock("host cursor visible（桌面/UI）");
+        }
+    }
+
     private bool OnStreamKeyHook(int vk, bool isDown)
     {
         if (_video is null || !_isActive)
@@ -1238,6 +1262,10 @@ public sealed partial class StreamWindow : Window
                 _cursorTimer.Tick += CursorTimer_Tick;
                 _cursorTimer.Start();
             }
+
+            // 游戏内自动锁定：Win32 窗口模式下 _cursorTimer 不启动，
+            // 所以单独一个 timer（250ms），所有模式都跑。
+            StartPointerAutoLock();
 
             // 3 秒后记一笔：主机到底有没有推光标更新（诊断用）
             DispatcherQueue.TryEnqueue(async () =>
@@ -2402,6 +2430,7 @@ public sealed partial class StreamWindow : Window
     private bool _pointerTracking;
     private bool _pointerLocked;
     private long _lastCursorDiagTick;   // cursorTick 诊断节流
+    private DispatcherTimer? _pointerTimer;   // 游戏内自动锁定检测（所有窗口模式都要跑）
     private bool _pointerLockForced;
     private int _hideSteps;
     private NativeMouse.POINT _cursorSavePos;
