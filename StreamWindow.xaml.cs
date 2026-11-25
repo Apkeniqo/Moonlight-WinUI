@@ -1207,9 +1207,20 @@ public sealed partial class StreamWindow : Window
             }
         }
 
+        // 主机光标可见性会抖（光标更新间隔/拖动窗口时的短暂隐藏），
+        // 直接按单拍切会让锁定/解锁来回跳 → 必须连续 750ms（3 拍）确认才进锁定。
+        if (!state.Visible)
+        {
+            _cursorHiddenTicks++;
+        }
+        else
+        {
+            _cursorHiddenTicks = 0;
+        }
+
         // 主机不画光标 → 游戏内（游戏把指针藏了）→ 锁定：相对位移 + 夹在画面内 + 隐藏本地光标
         // 主机画光标   → 桌面 / 有 UI 的应用 → 解锁，鼠标自由移到串流窗口外
-        if (!state.Visible && !_pointerLocked)
+        if (_cursorHiddenTicks >= 3 && !_pointerLocked)
         {
             if (TryEnterPointerLock(force: false, gameAuto: true))
             {
@@ -2440,6 +2451,7 @@ public sealed partial class StreamWindow : Window
     private bool _pointerTracking;
     private bool _pointerLocked;
     private long _lastCursorDiagTick;   // cursorTick 诊断节流
+    private int _cursorHiddenTicks;     // 主机光标连续不可见的拍数（自动锁定防抖）
     private DispatcherTimer? _pointerTimer;   // 游戏内自动锁定检测（所有窗口模式都要跑）
     private bool _pointerLockForced;
     private int _hideSteps;
@@ -2475,13 +2487,9 @@ public sealed partial class StreamWindow : Window
         if (point.Properties.IsMiddleButtonPressed) { SendMouseButton(2, true); }
         if (point.Properties.IsRightButtonPressed) { SendMouseButton(3, true); }
 
-        // 左键点画面 = 进入相对捕获；演示流没有主机可发，只当取焦点。
-        // gameAuto 让绝对鼠标设置不再挡住它 —— 窗口化游戏里主机光标是可见的，
-        // 自动判定进不了锁定，这时候点一下画面就能切到相对模式。
-        if (point.Properties.IsLeftButtonPressed && !_pointerLocked)
-        {
-            TryEnterPointerLock(force: false, gameAuto: true);
-        }
+        // 点画面不再自动锁定：桌面里拖动/选中窗口时点一下画面就被锁进相对模式，
+        // 拖动窗口的速度会和绝对坐标不一致（表现就是"时快时慢"）。
+        // 需要手动锁定时用 Ctrl+Alt+Shift+L。
 
         e.Handled = true;
     }
@@ -2966,6 +2974,18 @@ public sealed partial class StreamWindow : Window
             NativeMouse.IsKeyDown(NativeMouse.VkShift))
         {
             ExitPointerLock("hotkey");
+            e.Handled = true;
+            return;
+        }
+
+        // Ctrl+Alt+Shift+L 手动锁定（窗口化游戏：主机光标可见，自动判定不会锁）
+        if (!_pointerLocked &&
+            e.Key == Windows.System.VirtualKey.L &&
+            NativeMouse.IsKeyDown(NativeMouse.VkControl) &&
+            NativeMouse.IsKeyDown(NativeMouse.VkMenu) &&
+            NativeMouse.IsKeyDown(NativeMouse.VkShift))
+        {
+            TryEnterPointerLock(force: true, gameAuto: true);
             e.Handled = true;
             return;
         }
