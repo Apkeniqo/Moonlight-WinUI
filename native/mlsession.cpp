@@ -645,6 +645,26 @@ static int g_cursorHotY = 0;
 static std::vector<uint8_t> g_cursorPixels;
 static uint32_t g_cursorUpdates = 0;
 
+// ---- 手柄震动回调（P2）：保存到全局，C# 侧轮询后用 XInput 输出 ----
+static std::atomic<uint16_t> g_rumbleLow{ 0 };
+static std::atomic<uint16_t> g_rumbleHigh{ 0 };
+static std::atomic<uint16_t> g_triggerLeft{ 0 };
+static std::atomic<uint16_t> g_triggerRight{ 0 };
+
+static void ClRumble(unsigned short controllerNumber, unsigned short lowFreqMotor, unsigned short highFreqMotor)
+{
+    (void)controllerNumber;
+    g_rumbleLow = lowFreqMotor;
+    g_rumbleHigh = highFreqMotor;
+}
+
+static void ClRumbleTriggers(uint16_t controllerNumber, uint16_t leftTriggerMotor, uint16_t rightTriggerMotor)
+{
+    (void)controllerNumber;
+    g_triggerLeft = leftTriggerMotor;
+    g_triggerRight = rightTriggerMotor;
+}
+
 void ClCursorUpdate(const LI_CURSOR_UPDATE* update)
 {
     if (!update)
@@ -955,6 +975,8 @@ void InitCallbacks()
     g_connCb.logMessage = ClLogMessage;
     g_connCb.cursorUpdate = ClCursorUpdate;
     g_connCb.clipboardData = ClClipboardData;
+    g_connCb.rumble = ClRumble;
+    g_connCb.rumbleTriggers = ClRumbleTriggers;
 
     LiInitializeVideoCallbacks(&g_videoCb);
     g_videoCb.setup = DrSetup;
@@ -1786,5 +1808,24 @@ extern "C" __declspec(dllexport) int MS_RequestIdr(void)
             pending.store(false);
         }).detach();
     }
+    return 0;
+}
+// ---- 手柄（P1/P2）----
+extern "C" int LiSendMultiControllerEvent(short controllerNumber, short activeGamepadMask,
+    int buttonFlags, unsigned char leftTrigger, unsigned char rightTrigger,
+    short leftStickX, short leftStickY, short rightStickX, short rightStickY);
+
+extern "C" __declspec(dllexport) int MS_SendController(int index, int mask, int buttons,
+    int lt, int rt, int lx, int ly, int rx, int ry)
+{
+    return LiSendMultiControllerEvent((short)index, (short)mask, buttons,
+        (unsigned char)(lt & 0xFF), (unsigned char)(rt & 0xFF),
+        (short)lx, (short)ly, (short)rx, (short)ry);
+}
+
+extern "C" __declspec(dllexport) int MS_GetRumble(int* low, int* high)
+{
+    if (low) { *low = (int)g_rumbleLow.load(); }
+    if (high) { *high = (int)g_rumbleHigh.load(); }
     return 0;
 }

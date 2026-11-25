@@ -206,9 +206,10 @@ Sunshine 的 `named_devices` 只记 `cert/uuid/name`，**不绑 IP**。
 
 ## 7. 发布流程
 
-1. 改代码 → 本地构建验证（`build.bat`，**不要杀正在运行的实例**，用 `-p:OutDir=` 编到临时目录验证）。
+1. 改代码 → 本地构建验证：**先结束正在运行的 `MoonlightWinUI.exe`**（否则 `mlrender.dll` / 主程序被占用无法覆盖），
+   直接编到默认输出目录，**不要**用 `-p:OutDir=` 编到临时目录。
 2. 递增 `VERSION`（`1.0.NN`），`MoonlightWinUI.csproj` 从该文件读版本。
-3. 构建产物覆盖 `bin/x64/Debug/net8.0-windows10.0.19041.0/win-x64/`，启动确认。
+3. 构建产物直接落在 `bin/x64/Debug/net8.0-windows10.0.19041.0/win-x64/`，从该目录启动确认。
 4. 提交 + 推送：
 
 ```bash
@@ -248,3 +249,223 @@ HTTP 侧 `/displays`、`/display-scale-options`、`POST /display-scale`、`/api/
 | 1.0.46 | 接入主机显示缩放（DPI 三个接口） |
 | 1.0.45 | 多点触控、触摸反馈关闭、单双击去重 |
 | 1.0.44–1.0.31 | 断线重连、性能浮窗层级、控制面板跟随、刷新按钮等 |
+
+### 1.0.51 —— 游戏鼠标支持（相对捕获）
+
+- **现象**：进入 3D 游戏后光标不隐藏、视角不随鼠标转动。
+- **原因**：`TryEnterPointerLock()` 在 `AbsoluteMouse == true`（默认）时直接 `return false`，
+  永不进入相对捕获；而 `SendPointerDeltaHost()` 在绝对模式下只发 `LiSendMousePositionEvent`，
+  游戏需要的相对增量（`LiSendMouseMoveEvent`）从未发过。
+- **修法**（`StreamWindow.xaml.cs`）：
+  - 取消"绝对模式不允许锁定"，点画面即可锁定（游戏需要时）；
+  - `SendPointerDeltaHost()` 增加**锁定优先**分支：`_pointerLocked` 时走 `SendMouseMove(dx, dy)`，未锁定才按 `AbsoluteMouse` 走绝对；
+  - `ApplyRemoteCursorMode()` 的 `wantLocal` 增加 `_pointerLocked`，锁定期间要求主机别画光标，本地也隐藏；
+  - 进入/退出锁定时把 `_cursorModeApplied` 置 false 并重新应用，切换即时生效。
+- 退出锁定（Esc / Ctrl+Alt+Shift+Q）恢复绝对模式与主机光标。
+
+### 1.0.52 —— 游戏鼠标：Raw Input + 原生置空光标
+
+- **现象（1.0.51 后）**：进入游戏视角只有"轻微变化"，光标仍显示。
+- **原因**：锁定后的增量仍来自 WinUI `PointerMoved` + 系统光标位置差 —— 指针被 `SetCursorPos` 归中后
+  位置不再变化，事件稀疏且增量被窗口边界吃掉；`ShowCursor(false)` 对 WinUI 输入线程持有的光标无效
+  （HANDOFF §3 早已记录该限制）。
+- **修法**：
+  - native `mlrender.cpp`：子窗口创建时 `RegisterRawInputDevices`（`RIDEV_INPUTSINK`）；
+    `WM_INPUT` 里读 `RAWMOUSE.lLastX/lLastY`，锁定期间直接 `MS_SendMouseMove(dx, dy)` 并吞掉消息；
+  - `WM_SETCURSOR` 在锁定期间 `SetCursor(nullptr); return TRUE`（原生窗口才能真正隐藏光标）；
+  - 新导出 `ML_SetPointerLock(int)`：锁定/解锁时切状态并立刻置空/恢复光标；
+  - C#：`VideoSurface.SetPointerLock` 封装；`TryEnterPointerLock` / `ExitPointerLock` 调用它；
+    锁定期间停用 C# 侧 `SendPointerDeltaPhysical`（否则与 Raw Input 双发、速度翻倍）。
+- 未锁定仍走绝对坐标（桌面操作不变）。
+
+### 1.0.53 —— 游戏鼠标：夹住指针 + 定时压制光标
+
+- **现象（1.0.52 后）**：视角速度正常，但光标仍显示；窗口化时鼠标移出画面后视角就不动了。
+- **原因**：`SetCursor(nullptr)` 只在 `WM_SETCURSOR` 触发时生效，鼠标不动就不再调用，WinUI 输入线程会把光标显示回来；
+  指针没有被限制在画面内，一旦移出子窗口就收不到后续移动。
+- **修法**（`native/mlrender.cpp`，`ML_SetPointerLock`）：
+  - 锁定：`ClipCursor(子窗口屏幕矩形)` + `SetCursorPos(中心)` + `SetCursor(nullptr)` + `ShowCursor(false)` 压到负值；
+    并 `SetTimer(child, 7, 20)`。
+  - `WM_TIMER wp==7`：每 20ms 重新 `SetCursor(nullptr)` + 钉回中心（ClipCursor 保证不越界）。
+  - 解锁：`KillTimer` + `ClipCursor(nullptr)` + 恢复 `ShowCursor(true)` + 恢复箭头光标。
+
+### 1.0.54 —— 游戏鼠标：透明光标 + 重连后重建锁定
+
+- **现象（1.0.53 后）**：光标仍显示；断开重连后视角又几乎不动。
+- **原因**：
+  1. `SetCursor(nullptr)` / `ShowCursor(false)` 都压不住 WinUI 输入线程的光标（它会把箭头画回来）；
+  2. 重连会**重建视频子窗口**，Raw Input 的 `hwndTarget` 与定时器还挂在旧窗口上，等于锁定失效。
+- **修法**（`native/mlrender.cpp`）：
+  - 新增 `InvisibleCursor()`：`CreateIconIndirect` 出一个 32×32 全透明的 `HCURSOR`；
+    锁定期间一律 `SetCursor(InvisibleCursor())`（WM_SETCURSOR / WM_TIMER 两处），视觉上等同隐藏且不会被覆盖；
+  - `ML_HostChildWin32` 创建子窗口后：若 `g_pointerLock` 仍为真，**重新注册 Raw Input**、重新 `ClipCursor`、重挂 20ms 定时器；
+  - 解锁仍 `ClipCursor(nullptr)` + `ShowCursor(true)` + 恢复箭头。
+
+### 1.0.55 —— 游戏鼠标：点击由原生触发 + 主机光标同步
+
+- **关键发现**：视频区是原生子窗口，**WinUI 的 `VideoPanel` 收不到点击**，所以 C# 的
+  `TryEnterPointerLock()` 从来没被触发过 —— 前几版"点了没反应"根因在此。
+- **修法**：
+  - `native/mlrender.cpp`：`WM_LBUTTONDOWN` 里直接 `ApplyPointerLockState(true)`（点画面即锁定）；
+    键盘钩子里 `VK_ESCAPE` 且已锁定时解锁；新增导出 `ML_GetPointerLock()`。
+  - `ApplyPointerLockState()` 合并了 ClipCursor / 20ms 定时器 / 透明光标 / ShowCursor 计数，
+    重连重建子窗口时自动重新挂载。
+  - C# `StreamWindow`：性能定时器（0.5s）轮询 `_video.GetPointerLock()`，
+    与 `_pointerLocked` 不同步时更新并 `ApplyRemoteCursorMode()` —— **主机端的光标模式跟着切**，
+    否则主机会继续在画面里画光标（这才是"没隐藏"的真正来源）。
+
+### 1.0.56 —— 解锁快捷键从 Esc 改为 Ctrl+Alt+Shift+Q
+
+- **现象**：游戏里按 Esc 打开暂停菜单，关掉菜单后光标又出现、要再点一下画面才隐藏。
+- **原因**：1.0.55 把 Esc 当成"解锁快捷键"，而 Esc 在游戏里是暂停菜单 —— 按下即解锁，
+  菜单关闭后自然就回到未锁定状态。
+- **修法**：`native/mlrender.cpp` 的键盘钩子里删除 Esc 解锁，改为
+  `Ctrl+Alt+Shift+Q`（与 C# 侧 `VideoPanel_KeyDown` 的约定一致），并吞掉该组合不发给主机。
+  其余按键（含 Esc）照常转发，游戏暂停菜单行为不受影响。
+
+### 1.0.57 —— 游戏内 UI（暂停菜单）自动放开光标
+
+- **现象**：游戏中按 Esc 打开暂停菜单，光标仍是隐藏的，菜单点不了。
+- **原因**：锁定是"无条件"的 —— 不区分"游戏在转视角"和"游戏在显示 UI"。游戏显示 UI 时会自己把主机光标
+  设成可见，我们却仍在 `ClipCursor` + 归中 + 透明光标。
+- **修法**（`native/mlrender.cpp` 的 20ms 定时器）：
+  - 每拍用 `MS_CursorInfo()` 看主机光标是否可见（`visible && id >= 0`）；
+  - 可见 → 进入**软暂停**：`ClipCursor(nullptr)`、恢复箭头光标；`ML_GetPointerLock()` 此时返回 0，
+    C# 的状态同步会把主机光标模式切回"主机画光标"，菜单可用鼠标点；
+  - 主机光标再次隐藏 → 自动恢复锁定（重新 `ClipCursor` + 透明光标 + 归中）；
+  - `WM_INPUT` 在软暂停时不再发相对位移，改走绝对坐标（菜单点击正确）。
+- `ApplyPointerLockState(false)` 会复位软暂停标志。
+
+### 1.0.58 —— 游戏 UI 软暂停时显示可见光标
+
+- 现象：暂停菜单里鼠标能点但看不到光标（盲控）。
+- 原因：WM_SETCURSOR 的锁定分支只判断 g_pointerLock，没判断软暂停，鼠标一动又被设回透明光标。
+- 修法：WM_SETCURSOR 改为 g_pointerLock && !g_lockSuspended；20ms 定时器的软暂停分支每拍 SetCursor(IDC_ARROW)。
+
+### 1.0.60 —— 锁定状态语义修正（暂停菜单光标）
+
+- 现象：暂停菜单仍看不到光标（盲控）。
+- 根因：`ML_GetPointerLock()` 在软暂停时返回 0，C# 状态同步判定"没锁定"，于是从未把主机光标模式切到可见（日志证据：只有 `wantLocal=True locked=False`，没有锁定时的切换）。
+- 修法：`ML_GetPointerLock()` 返回真实锁定状态（含软暂停）；C# 在 `_pointerLocked=True` 时 `wantLocal=False` → `SetCursorMode(0)`，由主机/游戏决定是否画光标。
+- 验证日志：`cursorMode wantLocal=False rc=0 locked=True` + `lockdbg: vis=1 id=1 susp=1`。
+- 调试日志：原生每 5s 输出 `lockdbg: vis/id/susp`（保留，便于后续排查）。
+
+### 1.0.61 —— 去掉"软暂停"：锁定始终有效
+
+- 现象：退出暂停菜单后视角又几乎不动；菜单里出现"远程光标"（主机画的，符合预期但延迟）。
+- 原因：软暂停依据主机光标可见性，菜单关闭后主机仍报 `visible=1`，`g_lockSuspended` 卡在 true → `WM_INPUT` 不再发相对位移。
+- 修法：删除软暂停逻辑。锁定期间恒定为：本地透明光标 + `ClipCursor` + 20ms 归中；
+  光标可见性完全交给主机（`SetCursorMode(0)`，游戏 UI 会自己画）。这样退出菜单视角立刻恢复。
+
+### 1.0.62 —— 修复 ClipCursor 把系统鼠标锁死
+
+- 事故：锁定后点开始菜单，鼠标被钉在屏幕中间、全系统无法操作。
+- 原因：`ClipCursor` 是**全局**的；`ApplyPointerLockState(false)` 开头有 `if (!g_host.child) return;`，
+  子窗口已销毁时直接返回，永远不解夹；C# 的 `ExitPointerLock` 在 `_pointerLocked == false` 时也提前返回。
+- 修法：
+  1. 解锁分支提到最前面，**无条件** `ClipCursor(nullptr)` + 恢复 `ShowCursor` 计数（不依赖子窗口）；
+  2. `WM_KILLFOCUS/WM_CAPTURECHANGED` 时若在锁定则自动解锁（点开始菜单/切窗口立即解放鼠标）；
+  3. C# `ExitPointerLock` 在未锁定分支也调用一次 `SetPointerLock(false)`（幂等）。
+- 应急手段：另起进程 `ClipCursor(NULL)` 即可解锁（本次事故就是这么恢复的）。
+
+### 1.0.63 —— 不再用 ClipCursor（系统级锁定事故的根治）
+
+- 事故：锁定后鼠标被钉死，连开始菜单都点不到（ClipCursor 是全局裁剪，窗口化时指针出不了画面区域）。
+- 修法：锁定改用 `SetCapture(子窗口)` + 透明光标 + Raw Input；**完全不用 ClipCursor**，也不再每 20ms `SetCursorPos` 归中。
+  - 指针随物理鼠标自由移动（能移到任务栏），但点击被 capture 转发给主机；
+  - 失去 capture / 失焦时自动解锁；快捷键 `Ctrl+Alt+Shift+Q` 解锁。
+- 教训：**任何全局状态的 API（ClipCursor / 全局钩子）都必须有"无论窗口是否还在都能解除"的路径**。
+
+### 1.0.65 —— 锁定期间把指针夹在串流窗口内（但留逃生通道）
+
+- 需求：窗口化时鼠标不应移出串流画面。
+- 做法：20ms 定时器用 `SetCursorPos` 把指针夹回窗口内（**不用全局 ClipCursor**，解锁/退出即刻恢复自由）；
+  同时键盘钩子在锁定期间**放行 Win 键** —— 按 Win 打开开始菜单 → 失焦 → 自动解锁，避免再次出现"鼠标出不来"。
+- 未锁定/解锁后指针完全自由。
+
+### 1.0.66 —— Win 键仍发给主机（打开远程开始菜单）
+
+- 澄清：用户说的"点开始菜单"是**远程桌面**的开始菜单（主机上的），不是本地的。
+- 修正 1.0.65 的错误：删除"锁定期间放行 Win 键"的分支，Win 键恢复为发给主机并被本地吞掉。
+- 保留 1.0.65 的指针夹取（SetCursorPos 到窗口内，非全局 ClipCursor）；
+  退出锁定仍用 `Ctrl+Alt+Shift+Q` 或失焦（点别的本地窗口/Alt+Tab 到本地程序）。
+
+### 1.0.67 —— 退出游戏自动解锁
+
+- 需求：游戏中鼠标固定在窗口内；**退出游戏后自动解锁**。
+- 判据：20ms 定时器里 `MS_CursorInfo()`，若主机光标**持续可见 ≥2s**（100 拍）→ `ApplyPointerLockState(false)`。
+  游戏内 UI（暂停菜单）通常短暂显示光标，不会触发；回到主机桌面后光标一直可见 → 2 秒后自动解锁。
+- 同时保留：指针夹在窗口内（`SetCursorPos`）、`Ctrl+Alt+Shift+Q` 手动解锁、失焦解锁。
+
+### 1.0.68 —— 用主机应用状态判断"退出游戏"（暂停菜单不再误解锁）
+
+- 需求修正：暂停菜单里**不能**解锁（游戏仍在运行），只有真的退出游戏才解锁。
+- 移除 1.0.67 的"主机光标可见 ≥2s 自动解锁"（暂停菜单停留久了会被误判）。
+- 改为 C# 每 3s 查 `HostApi.GetCurrentGame()`：返回 0（无应用）或与启动时的 `_appId` 不同 → `ExitPointerLock("app exited")`。
+- 保留：游戏中指针夹在窗口内、`Ctrl+Alt+Shift+Q` 手动解锁、失焦解锁、暂停菜单由主机画光标。
+
+### 1.0.69 —— 解锁键改回 Esc
+
+- 按用户要求：锁定中按 **Esc** 解锁（Esc 仍同时发给主机，游戏菜单正常）。
+- `Ctrl+Alt+Shift+Q` 保留为备选（该组合不发给主机）。
+- 其余保持 1.0.68：指针夹在窗口内、锁定用远程光标、主机应用结束 3s 内自动解锁。
+
+### 1.0.70 —— Parsec 式指针锁定（ClipCursor 到画面 + 四重解锁保障）
+
+- 需求：指针必须锁在画面内、绝不飘出去。
+- 做法：锁定期间 `ClipCursor(子窗口矩形)`，并在 20ms 定时器里**每拍重设**（防止被其他程序重置）。
+- 解锁保障（关键，避免重演 1.0.62 的锁死事故）：
+  1. Esc（锁定中，同时仍发给主机）；
+  2. 窗口失焦 / WM_CAPTURECHANGED；
+  3. 主机应用结束（C# 每 3s 查 currentgame）；
+  4. 进程退出（Windows 自动重置 clip）。
+- 保留 SetCapture 与透明光标；本地指针不可见。
+
+### 1.0.71 —— 补 Ctrl+Alt+Shift+Z 解除捕获 + Raw Input 兜底
+
+- A：新增 `Ctrl+Alt+Shift+Z` 解除输入捕获（Moonlight 约定，比 Esc 安全、不碰游戏菜单），该组合不发给主机。
+- B：`RegisterRawInputDevices` 失败时（`g_rawMouse == false`），20ms 定时器退回 SDL 的 warp 模式：
+  `GetCursorPos` → 与窗口中心差值 → `MS_SendMouseMove` → `SetCursorPos(中心)`。
+- 参考：moonlight-qt `setCaptureActive()`（SDL_SetRelativeMouseMode）+ rustdesk PR #13928（ClipCursor + 光标控制）。
+
+### 回退 1.0.71（2026-11-26）
+
+- 按用户要求回到 1.0.70：移除 `Ctrl+Alt+Shift+Z` 解除捕获与 Raw Input 的 warp 兜底，
+  保留 Esc / Ctrl+Alt+Shift+Q / 失焦 / 应用结束四条解锁路径与 ClipCursor 锁定。
+- VERSION 现为 1.0.70。
+
+### 1.0.72 —— 游戏内 UI 自动切"本地光标 + 绝对坐标"（跟手）
+
+- 需求：游戏内各种界面（抽卡页、菜单、Alt 解锁）会显示光标，远程光标不跟手；且不能靠 Esc 切换。
+- 方案（业界做法，见 moonlight-qt #1016 / Parsec "Always Relative"）：双模式自动切换。
+  - 主机光标隐藏（游戏中）→ 相对模式 + Raw Input（视角）；
+  - 主机光标可见（UI）→ `SetCursorMode(1)` 由客户端画光标 + C# 发绝对坐标（零延迟跟手）。
+- 实现：原生 `MS_CursorInfo` 每 20ms 判定，`ML_GetGameUiMode()` 导出；UI 模式时 `WM_INPUT` 不发相对；
+  定时器用 `BuildCursorFromHost()` 画主机形状光标。C# 轮询该状态切 `wantLocal` 并在 UI 模式走 `SyncAbsoluteToSystemCursor()`。
+- 手动覆盖：`Ctrl+Alt+Shift+C` 切换 UI 模式（`g_manualUiModeSet`）。
+- 注：切换瞬间主机会把光标吸到本地指针位置（已知代价）。
+
+### 1.0.73 —— UI 模式在 WM_SETCURSOR 里也画本地光标
+
+- 1.0.72 只在 20ms 定时器里画，鼠标一动 `WM_SETCURSOR` 又设回透明光标 → 看不到。
+- 修：`WM_SETCURSOR` 的锁定分支按 `g_gameUiMode` 分流 —— UI 模式 `BuildCursorFromHost()`（主机形状）或箭头，游戏模式透明。
+- 日志验证：`uiMode=True` + `cursorMode wantLocal=True locked=True`（主机不画、本地画）。
+
+### 1.0.74 —— 修复 UI 模式光标"画不出来"的真因：ShowCursor 计数
+
+- 根因：锁定进入时 `ShowCursor(FALSE)` 循环把显示计数压成**负数**；此后即使 `SetCursor(IDC_ARROW)` 也不会显示。
+- 修法：新增 `EnsureCursorVisible(bool)`：UI 模式把计数恢复到非负，游戏模式压回负数；
+  两处（WM_SETCURSOR / 20ms 定时器）统一调用，UI 模式直接画系统箭头（不再依赖主机形状位图，避免空形状）。
+- 已验证模式切换日志：uiMode=True / cursorMode wantLocal=True locked=True。
+
+### 1.0.57 —— 手柄支持 P1+P2（XInput 输入 + 震动）
+
+- 本地 `native/third_party/moonlight-common-c` 已含 DS5 扩展（`ConnListenerSetAdaptiveTriggers`、
+  `LI_DS5_HAPTICS_PCM_FRAME`、`Ds5HapticsStream.c`），本版先做基础手柄。
+- native（`mlsession.cpp`）：注册 `g_connCb.rumble` / `rumbleTriggers` 保存到原子变量；
+  新增导出 `MS_SendController(index, mask, buttons, lt, rt, lx, ly, rx, ry)` → `LiSendMultiControllerEvent`，
+  `MS_GetRumble(low, high)` 供 C# 读取。
+- C#（新增 `GamepadInput.cs`）：`xinput1_4.dll` 16ms 轮询手柄 0；按键位与 Moonlight 一致可直传；
+  摇杆 Y 轴取反；状态变化才发送；到达/断开发 mask 事件；主机震动 → `XInputSetState`。
+- 接线：`StreamWindow` 在串流窗口创建后 `new GamepadInput(_video).Start()`，关窗时 Dispose（顺带停震）。
+- 待办（P3）：DS5 自适应扳机 / 触觉音频 / 触摸板 / 运动传感器。

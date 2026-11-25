@@ -224,6 +224,8 @@ public sealed partial class StreamWindow : Window
             _connWatch?.Stop();
             _pointerTimer?.Stop();
             NativeMouse.RestoreSystemCursor();
+            _gamepad?.Dispose();
+            _gamepad = null;
             _video?.Dispose();
             _video = null;
             SetThreadExecutionState(EsContinuous);   // 解除防休眠
@@ -713,7 +715,7 @@ public sealed partial class StreamWindow : Window
     /// <summary>请求主机结束当前运行的应用（Sunshine /cancel），结束后关闭串流窗口。</summary>
     private bool TryEndRemoteApp() => HostApi.CancelRunningApp(_host, 47984);
 
-    /// <summary>码率即时生效：走 Sunshine 基地版的 /bitrate（同一会话，不重连）。</summary>'
+    /// <summary>码率即时生效：走 Sunshine 基地版的 /bitrate（同一会话，不重连）。</summary>
     private bool TryChangeBitrateOnHost(int kbps)
     {
         try
@@ -1045,6 +1047,7 @@ public sealed partial class StreamWindow : Window
     private int _setCursorCalls;
     private bool _cursorLocalMode;
     private bool _firstFrameShown;
+    private GamepadInput? _gamepad;
     private long _lastIdrTick;
     private int _stallTicks;
     private DispatcherTimer? _perfCardTimer;
@@ -1116,6 +1119,13 @@ public sealed partial class StreamWindow : Window
             }
         };
         _perfCardTimer.Start();
+
+        // 手柄输入（P1）+ 震动（P2）
+        if (_gamepad is null && _video is not null)
+        {
+            _gamepad = new GamepadInput(_video);
+            _gamepad.Start();
+        }
     }
 
     private bool _testResDone;

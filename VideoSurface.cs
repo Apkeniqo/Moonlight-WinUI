@@ -313,6 +313,25 @@ public sealed class VideoSurface : IDisposable
     private static extern int MS_RequestIdr();
 
     [DllImport(NativeDll, CallingConvention = CallingConvention.Cdecl)]
+    private static extern int MS_SendController(int index, int mask, int buttons,
+        int lt, int rt, int lx, int ly, int rx, int ry);
+
+    [DllImport(NativeDll, CallingConvention = CallingConvention.Cdecl)]
+    private static extern int MS_GetRumble(out int low, out int high);
+
+    /// <summary>发送手柄状态（P1）。mask 为已连接手柄位图（bit0=手柄0）。</summary>
+    public int SendController(int index, int mask, int buttons, int lt, int rt,
+        int lx, int ly, int rx, int ry)
+        => MS_SendController(index, mask, buttons, lt, rt, lx, ly, rx, ry);
+
+    /// <summary>读取主机下发的震动强度（P2，0..65535）。</summary>
+    public (int Low, int High) GetRumble()
+    {
+        MS_GetRumble(out var low, out var high);
+        return (low, high);
+    }
+
+    [DllImport(NativeDll, CallingConvention = CallingConvention.Cdecl)]
     private static extern int MS_SendMouseMove(int dx, int dy);
 
     [DllImport(NativeDll, CallingConvention = CallingConvention.Cdecl)]
