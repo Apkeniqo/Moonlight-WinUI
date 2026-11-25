@@ -1003,6 +1003,22 @@ public sealed partial class StreamWindow : Window
         }
 
         var state = _video.GetCursorState();
+
+        // 自动跟随主机光标状态：
+        //   主机不画光标 → 游戏内（游戏把指针藏了）→ 进入指针锁定（相对位移 + 夹在画面内）
+        //   主机画光标   → 桌面 / 有 UI 的应用 → 退出锁定，鼠标自由移到串流窗口外
+        if (!state.Visible && !_pointerLocked)
+        {
+            if (TryEnterPointerLock(force: false, gameAuto: true))
+            {
+                ChildDiag("pointerLock=1（主机光标隐藏 → 游戏内，自动锁定）");
+            }
+        }
+        else if (state.Visible && _pointerLocked && !_pointerLockForced)
+        {
+            ExitPointerLock("host cursor visible（桌面/UI）");
+        }
+
         if (!state.Visible)
         {
             NativeMouse.HideStreamCursor();
@@ -2643,7 +2659,7 @@ public sealed partial class StreamWindow : Window
     /// 进入相对捕获：藏起系统指针、夹在画面矩形里、钉到中心。
     /// 只有真串流（state=2）才进；演示流没有主机可发，点了只当取焦点。
     /// </summary>
-    private bool TryEnterPointerLock(bool force)
+    private bool TryEnterPointerLock(bool force, bool gameAuto = false)
     {
         if (_pointerLocked || _video is null)
         {
@@ -2652,7 +2668,9 @@ public sealed partial class StreamWindow : Window
 
         // 绝对模式不需要相对捕获：本地指针不动、主机光标按位置直接映射，
         // 也就不存在"归中"和"藏不起来的光标"问题。
-        if (_settings.AbsoluteMouse)
+        // 但游戏内自动锁定（gameAuto）必须绕过它 —— 游戏要的是相对位移，
+        // 绝对模式下玩家转了鼠标视角是不动的（这就是 v1.0.50 的老问题）。
+        if (_settings.AbsoluteMouse && !gameAuto)
         {
             return false;
         }
