@@ -198,6 +198,16 @@
                     </StackPanel>
 
                     <StackPanel Orientation="Horizontal" Spacing="12">
+                        <TextBlock Text="指针灵敏度" Width="110" VerticalAlignment="Center" />
+                        <Slider x:Name="MouseSensitivitySlider" Width="200" Minimum="0.3" Maximum="2.0"
+                                StepFrequency="0.05" ValueChanged="MouseSensitivitySlider_ValueChanged" />
+                        <TextBlock x:Name="MouseSensitivityText" VerticalAlignment="Center" Opacity="0.8"
+                                   Text="1.00×" />
+                    </StackPanel>
+                    <TextBlock Text="只影响游戏内指针锁定时的鼠标；主机开了系统鼠标加速时可调小"
+                               Opacity="0.55" FontSize="12" Margin="0,-8,0,0" />
+
+                    <StackPanel Orientation="Horizontal" Spacing="12">
                         <TextBlock Text="编码" Width="110" VerticalAlignment="Center" />
                         <ComboBox x:Name="CodecBox" Width="200"
                                   SelectionChanged="CodecBox_SelectionChanged">

@@ -1227,6 +1227,7 @@ HostWindowState g_host;
 bool  g_pointerLocked = false;
 POINT g_lastMouse = {};
 bool  g_hasLastMouse = false;
+double g_mouseSensitivity = 1.0;   // 锁定模式相对位移倍率（1.0 = 原始）
 
 // 把系统指针钉回画面中心：不归中的话鼠标顶到 ClipCursor 边界就再也
 // 产生不了 WM_MOUSEMOVE（表现就是"视角到边界就停住"）。
@@ -1262,8 +1263,8 @@ void LockedMouseSendAndCenter()
             {
                 const int vw = g.w > 0 ? g.w : g_host.w;
                 const int vh = g.h > 0 ? g.h : g_host.h;
-                const int hx = dx * vw / cw;
-                const int hy = dy * vh / ch;
+                const int hx = (int)llround(dx * (double)vw / cw * g_mouseSensitivity);
+                const int hy = (int)llround(dy * (double)vh / ch * g_mouseSensitivity);
                 if (hx != 0 || hy != 0)
                 {
                     MS_SendMouseMove(hx, hy);
@@ -2051,6 +2052,19 @@ extern "C" __declspec(dllexport) int ML_HostChildWin32(void* parent, int w, int 
     return 0;
 }
 // 让外层窗口也能用同一套主机光标（避免鼠标移到标题栏/边框时指针跳回系统箭头）
+extern "C" __declspec(dllexport) void ML_SetMouseSensitivity(double value)
+{
+    if (value < 0.1)
+    {
+        value = 0.1;
+    }
+    if (value > 4.0)
+    {
+        value = 4.0;
+    }
+    g_mouseSensitivity = value;
+}
+
 extern "C" __declspec(dllexport) void ML_SetPointerLock(int locked)
 {
     const bool on = locked != 0;

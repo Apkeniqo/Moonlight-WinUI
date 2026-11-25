@@ -72,6 +72,9 @@ public sealed class StreamSettings
     /// </summary>
     public bool AbsoluteMouse { get; set; } = true;
 
+    /// <summary>指针锁定（游戏内）时的相对位移倍率：1.0 = 原始，调小可抵消主机的鼠标加速。</summary>
+    public double MouseSensitivity { get; set; } = 1.0;
+
     /// <summary>编码偏好（native MS_SetVideoCodec）：0=自动，1=H264，2=HEVC，3=AV1。</summary>
     public int Codec { get; set; }
 
@@ -139,6 +142,11 @@ public sealed class StreamSettings
     /// <summary>把手工改坏的 settings.json 拉回可用范围。</summary>
     public StreamSettings Normalized()
     {
+        if (MouseSensitivity is < 0.2 or > 3.0)
+        {
+            MouseSensitivity = 1.0;
+        }
+
         if (Width < 320 || Height < 200)
         {
             Width = 1920;

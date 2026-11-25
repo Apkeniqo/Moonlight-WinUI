@@ -224,6 +224,15 @@ public sealed class VideoSurface : IDisposable
     [DllImport(NativeDll, CallingConvention = CallingConvention.Cdecl)]
     private static extern void ML_SetPointerLock(int locked);
 
+    [DllImport(NativeDll, CallingConvention = CallingConvention.Cdecl)]
+    private static extern void ML_SetMouseSensitivity(double value);
+
+    /// <summary>锁定模式的相对位移倍率（1.0 = 原始，调小抵消主机鼠标加速）。</summary>
+    public void SetMouseSensitivity(double value)
+    {
+        try { ML_SetMouseSensitivity(value); } catch { }
+    }
+
     /// <summary>指针锁定：native 侧把 WM_MOUSEMOVE 翻译成相对位移（Win32 串流窗口模式下用）。</summary>
     public void SetPointerLock(bool locked)
     {

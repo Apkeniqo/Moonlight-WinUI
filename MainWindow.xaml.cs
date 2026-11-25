@@ -1025,6 +1025,8 @@ public sealed partial class MainWindow : Window
         FpsBox.SelectedIndex = fpsIndex >= 0 ? fpsIndex : 1;                        // 默认 60
 
         BitrateBox.Value = Math.Clamp(_settings.BitrateKbps / 1000.0, 5, 100);
+        MouseSensitivitySlider.Value = Math.Clamp(_settings.MouseSensitivity, 0.3, 2.0);
+        MouseSensitivityText.Text = $"{_settings.MouseSensitivity:F2}×";
         AutoLockSwitch.IsOn = _settings.AutoPointerLock;
         CodecBox.SelectedIndex = Math.Clamp(_settings.Codec, 0, 3);
         WindowModeBox.SelectedIndex = _settings.FullScreen ? 1 : 0;
@@ -1088,6 +1090,18 @@ public sealed partial class MainWindow : Window
 
         _settings.Fps = fps;
         PersistSettings($"{_settings.Width}×{_settings.Height}@{fps}");
+    }
+
+    private void MouseSensitivitySlider_ValueChanged(object sender, Microsoft.UI.Xaml.Controls.Primitives.RangeBaseValueChangedEventArgs e)
+    {
+        if (!_settingsReady)
+        {
+            return;
+        }
+
+        _settings.MouseSensitivity = Math.Round(e.NewValue, 2);
+        MouseSensitivityText.Text = $"{_settings.MouseSensitivity:F2}×";
+        PersistSettings($"指针灵敏度 {_settings.MouseSensitivity:F2}×");
     }
 
     private void BitrateBox_ValueChanged(NumberBox sender, NumberBoxValueChangedEventArgs e)
@@ -1376,6 +1390,7 @@ public sealed partial class MainWindow : Window
         _settings.FullScreen = defaults.FullScreen;
         _settings.SwapMouseButtons = defaults.SwapMouseButtons;
         _settings.AbsoluteMouse = defaults.AbsoluteMouse;
+        _settings.MouseSensitivity = defaults.MouseSensitivity;
         _settings.ReverseScroll = defaults.ReverseScroll;
         _settings.ClipboardImageSync = defaults.ClipboardImageSync;
         _settings.AppCardRows = defaults.AppCardRows;
