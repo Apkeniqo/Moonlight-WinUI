@@ -1228,6 +1228,32 @@ bool  g_pointerLocked = false;
 POINT g_lastMouse = {};
 bool  g_hasLastMouse = false;
 
+// 把系统指针钉回画面中心：不归中的话鼠标顶到 ClipCursor 边界就再也
+// 产生不了 WM_MOUSEMOVE（表现就是"视角到边界就停住"）。
+void CenterLockedCursor()
+{
+    if (!g_host.child)
+    {
+        return;
+    }
+
+    RECT rc = {};
+    GetClientRect(g_host.child, &rc);
+    POINT center = { (rc.right - rc.left) / 2, (rc.bottom - rc.top) / 2 };
+    ClientToScreen(g_host.child, &center);
+
+    POINT cur = {};
+    if (!GetCursorPos(&cur))
+    {
+        return;
+    }
+
+    if (cur.x != center.x || cur.y != center.y)
+    {
+        SetCursorPos(center.x, center.y);
+    }
+}
+
 bool g_gearEnabled = true;
 int  g_gearDockSide = 0;      // 0=右 1=左 2=上 3=下
 bool g_gearShown = false;
@@ -1564,7 +1590,11 @@ LRESULT CALLBACK HostWndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
             const int cx = GET_X_LPARAM(lp);
             const int cy = GET_Y_LPARAM(lp);
 
-            if (g_hasLastMouse)
+            RECT lockRc = {};
+            GetClientRect(hwnd, &lockRc);
+            const bool atCenter = abs(cx - lockRc.right / 2) <= 2 && abs(cy - lockRc.bottom / 2) <= 2;
+
+            if (g_hasLastMouse && !atCenter)
             {
                 const int dx = cx - g_lastMouse.x;
                 const int dy = cy - g_lastMouse.y;
@@ -1679,6 +1709,12 @@ LRESULT CALLBACK HostWndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
         break;
 
     case WM_TIMER:
+        // 指针锁定：周期性归中，保证鼠标永远有移动空间
+        if (wp == 3 && g_pointerLocked)
+        {
+            CenterLockedCursor();
+        }
+
         if (wp == 1 && !g_gearDragging && g_gearShown &&
             GetTickCount64() - g_gearLastHover > 1500)
         {
@@ -2035,6 +2071,19 @@ extern "C" __declspec(dllexport) void ML_SetPointerLock(int locked)
 
     g_pointerLocked = on;
     g_hasLastMouse = false;   // 切换后第一帧只当锚点
+
+    if (g_host.child)
+    {
+        if (on)
+        {
+            SetTimer(g_host.child, 3, 16, nullptr);   // 16ms 钉一次中心
+            CenterLockedCursor();
+        }
+        else
+        {
+            KillTimer(g_host.child, 3);
+        }
+    }
 }
 
 extern "C" __declspec(dllexport) int ML_ApplyCursor(void)
