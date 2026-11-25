@@ -1004,6 +1004,16 @@ public sealed partial class StreamWindow : Window
 
         var state = _video.GetCursorState();
 
+        // 诊断：每 2 秒记一次光标可见性/锁定状态（排查"游戏里视角不动"用）
+        {
+            var nowTick = Environment.TickCount64;
+            if (nowTick - _lastCursorDiagTick > 2000)
+            {
+                _lastCursorDiagTick = nowTick;
+                ChildDiag($"cursorTick visible={state.Visible} locked={_pointerLocked} applied={_cursorModeApplied}");
+            }
+        }
+
         // 自动跟随主机光标状态：
         //   主机不画光标 → 游戏内（游戏把指针藏了）→ 进入指针锁定（相对位移 + 夹在画面内）
         //   主机画光标   → 桌面 / 有 UI 的应用 → 退出锁定，鼠标自由移到串流窗口外
@@ -2391,6 +2401,7 @@ public sealed partial class StreamWindow : Window
     private Windows.Foundation.Point _lastPointerPos;
     private bool _pointerTracking;
     private bool _pointerLocked;
+    private long _lastCursorDiagTick;   // cursorTick 诊断节流
     private bool _pointerLockForced;
     private int _hideSteps;
     private NativeMouse.POINT _cursorSavePos;
@@ -2425,10 +2436,12 @@ public sealed partial class StreamWindow : Window
         if (point.Properties.IsMiddleButtonPressed) { SendMouseButton(2, true); }
         if (point.Properties.IsRightButtonPressed) { SendMouseButton(3, true); }
 
-        // 左键点画面 = 进入相对捕获；演示流没有主机可发，只当取焦点
+        // 左键点画面 = 进入相对捕获；演示流没有主机可发，只当取焦点。
+        // gameAuto 让绝对鼠标设置不再挡住它 —— 窗口化游戏里主机光标是可见的，
+        // 自动判定进不了锁定，这时候点一下画面就能切到相对模式。
         if (point.Properties.IsLeftButtonPressed && !_pointerLocked)
         {
-            TryEnterPointerLock(force: false);
+            TryEnterPointerLock(force: false, gameAuto: true);
         }
 
         e.Handled = true;
