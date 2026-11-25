@@ -1134,6 +1134,7 @@ void HudDraw(void* swapChain, int width, int height);
 
 extern "C" {
 int MS_SendMousePosition(int x, int y, int width, int height);
+int MS_SendMouseMove(int dx, int dy);
 int MS_SendMouseButton(int button, int down);
 int MS_SendMouseScroll(int clicks);
 int MS_SendMouseHScroll(int clicks);
@@ -1220,6 +1221,12 @@ struct HostWindowState
 };
 
 HostWindowState g_host;
+
+// 指针锁定（游戏内）：WM_MOUSEMOVE 改发相对位移，不再发绝对坐标。
+// C# 侧负责 ClipCursor + 把指针钉在中心 + 藏光标；这里只把"位置变化"翻译成相对移动。
+bool  g_pointerLocked = false;
+POINT g_lastMouse = {};
+bool  g_hasLastMouse = false;
 
 bool g_gearEnabled = true;
 int  g_gearDockSide = 0;      // 0=右 1=左 2=上 3=下
@@ -1550,6 +1557,42 @@ LRESULT CALLBACK HostWndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
     }
 
     case WM_MOUSEMOVE:
+        if (g_pointerLocked)
+        {
+            // 游戏内锁定：发相对位移（视频像素），绝对坐标一律不发。
+            // 光标被 C# 侧夹在画面里并周期性钉回中心 —— 那种瞬移要丢掉，只更新锚点。
+            const int cx = GET_X_LPARAM(lp);
+            const int cy = GET_Y_LPARAM(lp);
+
+            if (g_hasLastMouse)
+            {
+                const int dx = cx - g_lastMouse.x;
+                const int dy = cy - g_lastMouse.y;
+
+                if (abs(dx) <= 300 && abs(dy) <= 300 && (dx != 0 || dy != 0))
+                {
+                    RECT rc = {};
+                    GetClientRect(hwnd, &rc);
+                    const int cw = rc.right > 0 ? rc.right : 1;
+                    const int ch = rc.bottom > 0 ? rc.bottom : 1;
+                    const int vw = g.w > 0 ? g.w : g_host.w;
+                    const int vh = g.h > 0 ? g.h : g_host.h;
+
+                    const int hx = dx * vw / cw;
+                    const int hy = dy * vh / ch;
+                    if (hx != 0 || hy != 0)
+                    {
+                        MS_SendMouseMove(hx, hy);
+                    }
+                }
+            }
+
+            g_lastMouse.x = cx;
+            g_lastMouse.y = cy;
+            g_hasLastMouse = true;
+            return 0;
+        }
+
         if (g_gearDragging)
         {
             const int dx = GET_X_LPARAM(lp) - g_gearDragStart.x;
@@ -1982,6 +2025,18 @@ extern "C" __declspec(dllexport) int ML_HostChildWin32(void* parent, int w, int 
     return 0;
 }
 // 让外层窗口也能用同一套主机光标（避免鼠标移到标题栏/边框时指针跳回系统箭头）
+extern "C" __declspec(dllexport) void ML_SetPointerLock(int locked)
+{
+    const bool on = locked != 0;
+    if (on == g_pointerLocked)
+    {
+        return;
+    }
+
+    g_pointerLocked = on;
+    g_hasLastMouse = false;   // 切换后第一帧只当锚点
+}
+
 extern "C" __declspec(dllexport) int ML_ApplyCursor(void)
 {
     // 同上：形状没变就别重建，否则每次调用都漏一个 HCURSOR

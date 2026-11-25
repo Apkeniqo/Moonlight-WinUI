@@ -2756,6 +2756,10 @@ public sealed partial class StreamWindow : Window
         NativeMouse.ClipCursorTo(ref rect);
         CenterCursor(rect);
 
+        // Win32 串流窗口模式下鼠标事件进的是原生窗口，不在 WinUI 面板上 ——
+        // 让 native 把 WM_MOUSEMOVE 翻译成相对位移，否则锁定后仍在发绝对坐标（视角几乎不动）。
+        _video?.SetPointerLock(true);
+
         NativeMouse.GetCursorPos(out var centered);
 
         _lastCursorPhys = centered;
@@ -2784,6 +2788,7 @@ public sealed partial class StreamWindow : Window
         _pointerLockForced = false;
         _awaitCenter = false;
 
+        _video?.SetPointerLock(false);
         NativeMouse.ClipCursorFree(IntPtr.Zero);
         var showCount = 0;
         for (var i = 0; i < _hideSteps; i++)
