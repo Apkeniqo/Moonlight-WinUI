@@ -222,6 +222,15 @@ public sealed class VideoSurface : IDisposable
     private static extern uint MS_HostFeatures();
 
     [DllImport(NativeDll, CallingConvention = CallingConvention.Cdecl)]
+    private static extern void ML_SetPointerLock(int locked);
+
+    /// <summary>指针锁定：native 侧把 WM_MOUSEMOVE 翻译成相对位移（Win32 串流窗口模式下用）。</summary>
+    public void SetPointerLock(bool locked)
+    {
+        try { ML_SetPointerLock(locked ? 1 : 0); } catch { }
+    }
+
+    [DllImport(NativeDll, CallingConvention = CallingConvention.Cdecl)]
     private static extern int MS_CursorInfo(out int visible, out int shapeId, out int width, out int height, out int hotX, out int hotY);
 
     [DllImport(NativeDll, CallingConvention = CallingConvention.Cdecl)]

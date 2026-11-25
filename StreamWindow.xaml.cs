@@ -222,6 +222,7 @@ public sealed partial class StreamWindow : Window
             _renderWatchdog?.Stop();
             _clipboardTimer?.Stop();
             _connWatch?.Stop();
+            _pointerTimer?.Stop();
             NativeMouse.RestoreSystemCursor();
             _video?.Dispose();
             _video = null;
@@ -1003,6 +1004,7 @@ public sealed partial class StreamWindow : Window
         }
 
         var state = _video.GetCursorState();
+
         if (!state.Visible)
         {
             NativeMouse.HideStreamCursor();
@@ -1162,6 +1164,54 @@ public sealed partial class StreamWindow : Window
 
         return true;
     }
+    /// <summary>启动"游戏内自动锁定"检测（250ms）。</summary>
+    private void StartPointerAutoLock()
+    {
+        _pointerTimer ??= new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(250) };
+        if (_pointerTimer.IsEnabled)
+        {
+            return;
+        }
+
+        _pointerTimer.Tick += PointerAutoLock_Tick;
+        _pointerTimer.Start();
+    }
+
+    private void PointerAutoLock_Tick(object? sender, object e)
+    {
+        if (_closed || _demo || _video is null)
+        {
+            _pointerTimer?.Stop();
+            return;
+        }
+
+        var state = _video.GetCursorState();
+
+        // 诊断：每 2 秒一刀
+        {
+            var nowTick = Environment.TickCount64;
+            if (nowTick - _lastCursorDiagTick > 2000)
+            {
+                _lastCursorDiagTick = nowTick;
+                ChildDiag($"cursorTick visible={state.Visible} locked={_pointerLocked} applied={_cursorModeApplied}");
+            }
+        }
+
+        // 主机不画光标 → 游戏内（游戏把指针藏了）→ 锁定：相对位移 + 夹在画面内 + 隐藏本地光标
+        // 主机画光标   → 桌面 / 有 UI 的应用 → 解锁，鼠标自由移到串流窗口外
+        if (!state.Visible && !_pointerLocked)
+        {
+            if (TryEnterPointerLock(force: false, gameAuto: true))
+            {
+                ChildDiag("pointerLock=1（主机光标隐藏 → 游戏内，自动锁定）");
+            }
+        }
+        else if (state.Visible && _pointerLocked && !_pointerLockForced)
+        {
+            ExitPointerLock("host cursor visible（桌面/UI）");
+        }
+    }
+
     private bool OnStreamKeyHook(int vk, bool isDown)
     {
         if (_video is null || !_isActive)
@@ -1212,6 +1262,10 @@ public sealed partial class StreamWindow : Window
                 _cursorTimer.Tick += CursorTimer_Tick;
                 _cursorTimer.Start();
             }
+
+            // 游戏内自动锁定：Win32 窗口模式下 _cursorTimer 不启动，
+            // 所以单独一个 timer（250ms），所有模式都跑。
+            StartPointerAutoLock();
 
             // 3 秒后记一笔：主机到底有没有推光标更新（诊断用）
             DispatcherQueue.TryEnqueue(async () =>
@@ -2375,6 +2429,8 @@ public sealed partial class StreamWindow : Window
     private Windows.Foundation.Point _lastPointerPos;
     private bool _pointerTracking;
     private bool _pointerLocked;
+    private long _lastCursorDiagTick;   // cursorTick 诊断节流
+    private DispatcherTimer? _pointerTimer;   // 游戏内自动锁定检测（所有窗口模式都要跑）
     private bool _pointerLockForced;
     private int _hideSteps;
     private NativeMouse.POINT _cursorSavePos;
@@ -2409,10 +2465,12 @@ public sealed partial class StreamWindow : Window
         if (point.Properties.IsMiddleButtonPressed) { SendMouseButton(2, true); }
         if (point.Properties.IsRightButtonPressed) { SendMouseButton(3, true); }
 
-        // 左键点画面 = 进入相对捕获；演示流没有主机可发，只当取焦点
+        // 左键点画面 = 进入相对捕获；演示流没有主机可发，只当取焦点。
+        // gameAuto 让绝对鼠标设置不再挡住它 —— 窗口化游戏里主机光标是可见的，
+        // 自动判定进不了锁定，这时候点一下画面就能切到相对模式。
         if (point.Properties.IsLeftButtonPressed && !_pointerLocked)
         {
-            TryEnterPointerLock(force: false);
+            TryEnterPointerLock(force: false, gameAuto: true);
         }
 
         e.Handled = true;
@@ -2643,7 +2701,7 @@ public sealed partial class StreamWindow : Window
     /// 进入相对捕获：藏起系统指针、夹在画面矩形里、钉到中心。
     /// 只有真串流（state=2）才进；演示流没有主机可发，点了只当取焦点。
     /// </summary>
-    private bool TryEnterPointerLock(bool force)
+    private bool TryEnterPointerLock(bool force, bool gameAuto = false)
     {
         if (_pointerLocked || _video is null)
         {
@@ -2652,7 +2710,9 @@ public sealed partial class StreamWindow : Window
 
         // 绝对模式不需要相对捕获：本地指针不动、主机光标按位置直接映射，
         // 也就不存在"归中"和"藏不起来的光标"问题。
-        if (_settings.AbsoluteMouse)
+        // 但游戏内自动锁定（gameAuto）必须绕过它 —— 游戏要的是相对位移，
+        // 绝对模式下玩家转了鼠标视角是不动的（这就是 v1.0.50 的老问题）。
+        if (_settings.AbsoluteMouse && !gameAuto)
         {
             return false;
         }
@@ -2696,6 +2756,10 @@ public sealed partial class StreamWindow : Window
         NativeMouse.ClipCursorTo(ref rect);
         CenterCursor(rect);
 
+        // Win32 串流窗口模式下鼠标事件进的是原生窗口，不在 WinUI 面板上 ——
+        // 让 native 把 WM_MOUSEMOVE 翻译成相对位移，否则锁定后仍在发绝对坐标（视角几乎不动）。
+        _video?.SetPointerLock(true);
+
         NativeMouse.GetCursorPos(out var centered);
 
         _lastCursorPhys = centered;
@@ -2724,6 +2788,7 @@ public sealed partial class StreamWindow : Window
         _pointerLockForced = false;
         _awaitCenter = false;
 
+        _video?.SetPointerLock(false);
         NativeMouse.ClipCursorFree(IntPtr.Zero);
         var showCount = 0;
         for (var i = 0; i < _hideSteps; i++)
