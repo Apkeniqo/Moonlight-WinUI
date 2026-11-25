@@ -457,3 +457,15 @@ HTTP 侧 `/displays`、`/display-scale-options`、`POST /display-scale`、`/api/
 - 修法：新增 `EnsureCursorVisible(bool)`：UI 模式把计数恢复到非负，游戏模式压回负数；
   两处（WM_SETCURSOR / 20ms 定时器）统一调用，UI 模式直接画系统箭头（不再依赖主机形状位图，避免空形状）。
 - 已验证模式切换日志：uiMode=True / cursorMode wantLocal=True locked=True。
+
+### 1.0.57 —— 手柄支持 P1+P2（XInput 输入 + 震动）
+
+- 本地 `native/third_party/moonlight-common-c` 已含 DS5 扩展（`ConnListenerSetAdaptiveTriggers`、
+  `LI_DS5_HAPTICS_PCM_FRAME`、`Ds5HapticsStream.c`），本版先做基础手柄。
+- native（`mlsession.cpp`）：注册 `g_connCb.rumble` / `rumbleTriggers` 保存到原子变量；
+  新增导出 `MS_SendController(index, mask, buttons, lt, rt, lx, ly, rx, ry)` → `LiSendMultiControllerEvent`，
+  `MS_GetRumble(low, high)` 供 C# 读取。
+- C#（新增 `GamepadInput.cs`）：`xinput1_4.dll` 16ms 轮询手柄 0；按键位与 Moonlight 一致可直传；
+  摇杆 Y 轴取反；状态变化才发送；到达/断开发 mask 事件；主机震动 → `XInputSetState`。
+- 接线：`StreamWindow` 在串流窗口创建后 `new GamepadInput(_video).Start()`，关窗时 Dispose（顺带停震）。
+- 待办（P3）：DS5 自适应扳机 / 触觉音频 / 触摸板 / 运动传感器。
