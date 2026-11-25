@@ -1230,28 +1230,51 @@ bool  g_hasLastMouse = false;
 
 // 把系统指针钉回画面中心：不归中的话鼠标顶到 ClipCursor 边界就再也
 // 产生不了 WM_MOUSEMOVE（表现就是"视角到边界就停住"）。
-void CenterLockedCursor()
+// 锁定期间每 16ms 执行：读真实光标位置 → 把这段时间的位移发给主机 → 指针钉回中心。
+// 关键：位移必须"先发再归中"。之前归中事件被丢弃，快速移动时会丢一段位移，画面就会抽动。
+void LockedMouseSendAndCenter()
 {
-    if (!g_host.child)
+    if (!g_pointerLocked || !g_host.child)
     {
         return;
     }
 
     RECT rc = {};
     GetClientRect(g_host.child, &rc);
-    POINT center = { (rc.right - rc.left) / 2, (rc.bottom - rc.top) / 2 };
-    ClientToScreen(g_host.child, &center);
+    const int cw = rc.right > 0 ? rc.right : 1;
+    const int ch = rc.bottom > 0 ? rc.bottom : 1;
+
+    POINT center = { cw / 2, ch / 2 };   // 客户区坐标
+    POINT centerScreen = center;
+    ClientToScreen(g_host.child, &centerScreen);
 
     POINT cur = {};
-    if (!GetCursorPos(&cur))
+    if (GetCursorPos(&cur))
     {
-        return;
+        POINT cli = cur;
+        ScreenToClient(g_host.child, &cli);
+
+        if (g_hasLastMouse)
+        {
+            const int dx = cli.x - g_lastMouse.x;
+            const int dy = cli.y - g_lastMouse.y;
+            if (dx != 0 || dy != 0)
+            {
+                const int vw = g.w > 0 ? g.w : g_host.w;
+                const int vh = g.h > 0 ? g.h : g_host.h;
+                const int hx = dx * vw / cw;
+                const int hy = dy * vh / ch;
+                if (hx != 0 || hy != 0)
+                {
+                    MS_SendMouseMove(hx, hy);
+                }
+            }
+        }
     }
 
-    if (cur.x != center.x || cur.y != center.y)
-    {
-        SetCursorPos(center.x, center.y);
-    }
+    SetCursorPos(centerScreen.x, centerScreen.y);
+    g_lastMouse = center;
+    g_hasLastMouse = true;
 }
 
 bool g_gearEnabled = true;
@@ -1585,41 +1608,8 @@ LRESULT CALLBACK HostWndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
     case WM_MOUSEMOVE:
         if (g_pointerLocked)
         {
-            // 游戏内锁定：发相对位移（视频像素），绝对坐标一律不发。
-            // 光标被 C# 侧夹在画面里并周期性钉回中心 —— 那种瞬移要丢掉，只更新锚点。
-            const int cx = GET_X_LPARAM(lp);
-            const int cy = GET_Y_LPARAM(lp);
-
-            RECT lockRc = {};
-            GetClientRect(hwnd, &lockRc);
-            const bool atCenter = abs(cx - lockRc.right / 2) <= 2 && abs(cy - lockRc.bottom / 2) <= 2;
-
-            if (g_hasLastMouse && !atCenter)
-            {
-                const int dx = cx - g_lastMouse.x;
-                const int dy = cy - g_lastMouse.y;
-
-                if (abs(dx) <= 300 && abs(dy) <= 300 && (dx != 0 || dy != 0))
-                {
-                    RECT rc = {};
-                    GetClientRect(hwnd, &rc);
-                    const int cw = rc.right > 0 ? rc.right : 1;
-                    const int ch = rc.bottom > 0 ? rc.bottom : 1;
-                    const int vw = g.w > 0 ? g.w : g_host.w;
-                    const int vh = g.h > 0 ? g.h : g_host.h;
-
-                    const int hx = dx * vw / cw;
-                    const int hy = dy * vh / ch;
-                    if (hx != 0 || hy != 0)
-                    {
-                        MS_SendMouseMove(hx, hy);
-                    }
-                }
-            }
-
-            g_lastMouse.x = cx;
-            g_lastMouse.y = cy;
-            g_hasLastMouse = true;
+            // 锁定期间的位移统一由 LockedMouseSendAndCenter（16ms 定时器）读取发送。
+            // 这里只吞掉消息，绝不再走绝对坐标路径。
             return 0;
         }
 
@@ -1712,7 +1702,7 @@ LRESULT CALLBACK HostWndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
         // 指针锁定：周期性归中，保证鼠标永远有移动空间
         if (wp == 3 && g_pointerLocked)
         {
-            CenterLockedCursor();
+            LockedMouseSendAndCenter();
         }
 
         if (wp == 1 && !g_gearDragging && g_gearShown &&
@@ -2076,8 +2066,8 @@ extern "C" __declspec(dllexport) void ML_SetPointerLock(int locked)
     {
         if (on)
         {
-            SetTimer(g_host.child, 3, 16, nullptr);   // 16ms 钉一次中心
-            CenterLockedCursor();
+            SetTimer(g_host.child, 3, 16, nullptr);   // 16ms：发位移 + 归中
+            LockedMouseSendAndCenter();
         }
         else
         {
