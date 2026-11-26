@@ -660,13 +660,7 @@ public sealed partial class StreamWindow : Window
             var x = rect.Left + (winW - menuW) / 2;
             var y = rect.Top + (winH - menuH) / 2;
 
-            if (_controlWindow is null)
-            {
-                _controlWindow = new ControlWindow(_settings, ApplyStreamSettings, _host);
-                _controlWindow.QuitStream = () => { try { Close(); } catch { } };
-                _controlWindow.QuitStreamAndExit = () => { try { TryEndRemoteApp(); } catch { } try { Close(); } catch { } };
-                _controlWindow.Closed += (_, _) => { try { _video?.SetFollowWindow(IntPtr.Zero); } catch { } _controlWindow = null; StopPanelFollow(); };
-            }
+            EnsureControlWindow();
 
             _controlWindow.ShowAt(x, y, scale, menuW, menuH);
 
@@ -676,6 +670,31 @@ public sealed partial class StreamWindow : Window
             StartPanelFollow();   // 面板不再是"失焦即关"，串流窗口移动时它得跟着走
         }
     }
+    /// <summary>
+    /// 预创建控制面板。老机器上现场 new ControlWindow（建 WinUI 窗口）会阻塞 UI 线程
+    /// 3~4 秒，表现就是"打开菜单画面卡住"；提前建好，打开时只剩 ShowAt。
+    /// </summary>
+    private void EnsureControlWindow()
+    {
+        if (_controlWindow is not null || _closed)
+        {
+            return;
+        }
+
+        var started = Environment.TickCount64;
+        _controlWindow = new ControlWindow(_settings, ApplyStreamSettings, _host);
+        _controlWindow.QuitStream = () => { try { Close(); } catch { } };
+        _controlWindow.QuitStreamAndExit = () => { try { TryEndRemoteApp(); } catch { } try { Close(); } catch { } };
+        _controlWindow.Closed += (_, _) =>
+        {
+            try { _video?.SetFollowWindow(IntPtr.Zero); } catch { }
+            _controlWindow = null;
+            StopPanelFollow();
+        };
+
+        ChildDiag($"EnsureControlWindow 耗时 {Environment.TickCount64 - started} ms");
+    }
+
     private void ShowGearMenu()
     {
         // 纯 Win32 串流窗口：用 GDI 自绘的原生控制弹窗
@@ -703,11 +722,7 @@ public sealed partial class StreamWindow : Window
         var x = (int)Math.Round(origin.X + areaOrigin.X * scale + (areaW - menuW) / 2.0);
         var y = (int)Math.Round(origin.Y + areaOrigin.Y * scale + (areaH - menuH) / 2.0);
 
-        if (_controlWindow is null)
-        {
-            _controlWindow = new ControlWindow(_settings, ApplyStreamSettings, _host);
-            _controlWindow.Closed += (_, _) => _controlWindow = null;
-        }
+        EnsureControlWindow();
 
         _controlWindow.ShowAt(x, y, scale);
     }
@@ -2439,6 +2454,13 @@ public sealed partial class StreamWindow : Window
 
             RunSelfTest();
             RunPointerLockSelfTest();
+
+            // 首帧显示后预创建控制面板（放在 500ms 定时器里，避开用户操作路径）
+            if (!_controlPrecreated && _video is not null && _video.DecodedFrames > 0)
+            {
+                _controlPrecreated = true;
+                DispatcherQueue.TryEnqueue(EnsureControlWindow);
+            }
         }
     }
 
@@ -2454,6 +2476,7 @@ public sealed partial class StreamWindow : Window
     private bool _pointerLocked;
     private long _lastCursorDiagTick;   // cursorTick 诊断节流
     private int _cursorHiddenTicks;     // 主机光标连续不可见的拍数（自动锁定防抖）
+    private bool _controlPrecreated;    // 控制面板是否已预创建
     private DispatcherTimer? _pointerTimer;   // 游戏内自动锁定检测（所有窗口模式都要跑）
     private bool _pointerLockForced;
     private int _hideSteps;
