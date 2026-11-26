@@ -48,6 +48,9 @@ int  g_snapTargetX = 0, g_snapTargetY = 0;   // 吸附目标（动画用）
 bool g_snapAnimating = false;
 bool g_menuHidden = false;                   // 已半隐藏到边缘
 bool g_snapToHide = false;                   // 当前吸附动画的目标是"半隐藏位"
+int g_snapStartX = 0, g_snapStartY = 0;       // 动画起点
+ULONGLONG g_snapStartTick = 0;                // 动画开始时刻
+const int kSnapDurationMs = 200;              // 吸附时长
 int  g_menuEdge = 0;                         // 0右 1左 2上 3下
 ULONGLONG g_menuLastActive = 0;              // 最后一次悬停/拖动时间
 const int kMenuTimerId = 4;                  // 吸附/半隐藏定时器
@@ -251,7 +254,10 @@ void SnapMenuToEdge()
     else if (best == 2) { g_snapTargetY = margin; }
     else { g_snapTargetY = rc.bottom - size - margin; }
 
-    // 平滑吸附（每 16ms 走 1/7 距离，约 110ms 到位）
+    // 曲线吸附（ease-out cubic，200ms）
+    g_snapStartX = g_menuX;
+    g_snapStartY = g_menuY;
+    g_snapStartTick = GetTickCount64();
     g_snapAnimating = true;
     g_snapToHide = false;
     g_menuHidden = false;
@@ -293,6 +299,9 @@ void HideMenuToEdge()
     }
 
     Diag("menu hide animate: edge=%d from=%d,%d to=%d,%d", g_menuEdge, g_menuX, g_menuY, g_snapTargetX, g_snapTargetY);
+    g_snapStartX = g_menuX;
+    g_snapStartY = g_menuY;
+    g_snapStartTick = GetTickCount64();
     g_snapToHide = true;
     g_snapAnimating = true;
     SetTimer(g_win, kMenuTimerId, 16, nullptr);
@@ -704,14 +713,20 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
     case WM_TIMER:
         if (wp == kMenuTimerId && g_menu)
         {
-            // 平滑吸附
+            // 曲线吸附：ease-out cubic —— 起步快、收尾慢，位置由时间连续算出，不会顿
             if (g_snapAnimating)
             {
-                const int dx = g_snapTargetX - g_menuX;
-                const int dy = g_snapTargetY - g_menuY;
-                // 匀速吸附：每帧固定速度（原来按 1/7 距离缩，帧间速度越来越慢，看着一顿一顿）
-                const int speed = 22;
-                if (abs(dx) <= speed && abs(dy) <= speed)
+                const ULONGLONG elapsed = GetTickCount64() - g_snapStartTick;
+                double t = (double)elapsed / (double)kSnapDurationMs;
+                if (t > 1.0) { t = 1.0; }
+
+                const double inv = 1.0 - t;
+                const double ease = 1.0 - inv * inv * inv;   // ease-out cubic
+
+                g_menuX = g_snapStartX + (int)((g_snapTargetX - g_snapStartX) * ease);
+                g_menuY = g_snapStartY + (int)((g_snapTargetY - g_snapStartY) * ease);
+
+                if (t >= 1.0)
                 {
                     g_menuX = g_snapTargetX;
                     g_menuY = g_snapTargetY;
@@ -724,13 +739,6 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
                         KillTimer(hwnd, kMenuTimerId);
                     }
                     // 否则不 KillTimer：继续跑，负责 2 秒后的半隐藏
-                }
-                else
-                {
-                    const int stepX = dx > 0 ? speed : (dx < 0 ? -speed : 0);
-                    const int stepY = dy > 0 ? speed : (dy < 0 ? -speed : 0);
-                    g_menuX += stepX;
-                    g_menuY += stepY;
                 }
                 SetWindowPos(g_menu, HWND_TOP, g_menuX, g_menuY, g_menuSize, g_menuSize, SWP_NOACTIVATE);
             }
