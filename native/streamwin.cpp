@@ -709,7 +709,9 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
             {
                 const int dx = g_snapTargetX - g_menuX;
                 const int dy = g_snapTargetY - g_menuY;
-                if (abs(dx) <= 3 && abs(dy) <= 3)
+                // 匀速吸附：每帧固定速度（原来按 1/7 距离缩，帧间速度越来越慢，看着一顿一顿）
+                const int speed = 22;
+                if (abs(dx) <= speed && abs(dy) <= speed)
                 {
                     g_menuX = g_snapTargetX;
                     g_menuY = g_snapTargetY;
@@ -725,12 +727,8 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
                 }
                 else
                 {
-                    // 每帧 1/7 距离（约 110ms 到位）；距离小于 7 时保底走 1px，
-                    // 否则 dx/7 恒为 0 → 永远到不了目标 → 半隐藏的 2 秒检查永远被 anim 挡住
-                    int stepX = dx / 7;
-                    int stepY = dy / 7;
-                    if (stepX == 0 && dx != 0) { stepX = dx > 0 ? 1 : -1; }
-                    if (stepY == 0 && dy != 0) { stepY = dy > 0 ? 1 : -1; }
+                    const int stepX = dx > 0 ? speed : (dx < 0 ? -speed : 0);
+                    const int stepY = dy > 0 ? speed : (dy < 0 ? -speed : 0);
                     g_menuX += stepX;
                     g_menuY += stepY;
                 }
