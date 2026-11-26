@@ -50,12 +50,11 @@
                                   VerticalScrollBarVisibility="Auto"
                                   HorizontalScrollBarVisibility="Disabled">
                         <ItemsRepeater x:Name="DeviceList" ElementPrepared="DeviceList_ElementPrepared">
-                            <!-- UniformGridLayout：固定列宽（300），卡片严格等宽。
-                                 LinedFlowLayout 在某些宽度下会忽略我们的固定宽度，卡片宽窄不一，故换回。 -->
+                            <!-- LinedFlowLayout 自带过渡动画。它会主动 resize 项目（卡片宽窄不一），
+                                 社区 workaround：在 ElementPrepared 里给元素设 MinWidth/MaxWidth=300。 -->
                             <ItemsRepeater.Layout>
-                                <UniformGridLayout MinItemWidth="300" MinItemHeight="96"
-                                                   MinRowSpacing="10" MinColumnSpacing="10"
-                                                   ItemsStretch="None" ItemsJustification="Start" />
+                                <LinedFlowLayout ItemsStretch="None" LineHeight="96"
+                                                 LineSpacing="10" MinItemSpacing="10" />
                             </ItemsRepeater.Layout>
                             <ItemsRepeater.ItemTemplate>
                                 <DataTemplate x:DataType="local:HostEntry">

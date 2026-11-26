@@ -171,6 +171,11 @@ public sealed partial class MainWindow : Window
             return;
         }
 
+        // LinedFlowLayout 会尝试 resize 项目（卡片宽窄不一）——社区 workaround：
+        // 在元素上设 MinWidth/MaxWidth，布局就压不动它了。
+        element.MinWidth = 300;
+        element.MaxWidth = 300;
+
         // 用索引而不是 DataContext：ElementPrepared 触发时数据绑定可能还没完成
         element.Tag = args.Index;
         element.Tapped -= DeviceCard_Tapped;
