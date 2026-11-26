@@ -70,6 +70,9 @@ public sealed partial class MainWindow : Window
         // 单行卡片的两侧渐隐：滚动/改尺寸时重算每张卡的透明度
         AppScroll.ViewChanged += (_, _) => UpdateEdgeFade();
         AppScroll.SizeChanged += (_, _) => UpdateAppCardSize();
+        // 诊断：记录设备卡片在尺寸变化 / 每次布局后的真实位置（200ms 节流）
+        DeviceList.SizeChanged += (_, _) => LogCardLayout("sizeChanged");
+        DeviceList.LayoutUpdated += (_, _) => LogCardLayout("layoutUpdated");
         // 设备卡片重排动画：窗口尺寸变化后让卡片"滑"到新位置
         DeviceList.SizeChanged += (_, _) => AnimateHostCards();
         HostPage.SizeChanged += (_, _) => UpdateAppCardSize();
@@ -168,6 +171,34 @@ public sealed partial class MainWindow : Window
 
     /// <summary>设备卡片重排时缓存位置（key 是卡片元素本身）。</summary>
     private readonly Dictionary<FrameworkElement, Windows.Foundation.Point> _hostCardPos = new();
+
+    private long _lastCardLayoutLog;
+
+    private void LogCardLayout(string where)
+    {
+        var now = Environment.TickCount64;
+        if (now - _lastCardLayoutLog < 200)
+        {
+            return;
+        }
+        _lastCardLayoutLog = now;
+
+        try
+        {
+            var parts = new List<string>();
+            foreach (var card in DeviceList.Items.OfType<FrameworkElement>())
+            {
+                var pt = card.TransformToVisual(DeviceList)
+                    .TransformPoint(new Windows.Foundation.Point(0, 0));
+                parts.Add($"{pt.X:F0},{pt.Y:F0}");
+            }
+
+            System.IO.File.AppendAllText(
+                System.IO.Path.Combine(AppContext.BaseDirectory, "backdrop.log"),
+                $"{DateTime.Now:HH:mm:ss.fff} cards {where} list={DeviceList.ActualWidth:F0}x{DeviceList.ActualHeight:F0} [{string.Join("; ", parts)}]{Environment.NewLine}");
+        }
+        catch { }
+    }
 
     /// <summary>
     /// 窗口尺寸变化后设备卡片会重新换行：这里把每张卡片从"旧位置"滑到"新位置"，
