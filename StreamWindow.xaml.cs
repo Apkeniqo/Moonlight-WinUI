@@ -1992,7 +1992,12 @@ public sealed partial class StreamWindow : Window
         // 子窗口（原生弹窗）模式：HUD 画在视频上
         if (_useChildVideo && _video is not null)
         {
-            var text = $"{p.Fps:F0} fps   {decoder}   {p.EncodeMs:F1}/{p.DecodeMs:F1} ms   网络 {p.RttMs:F1} ms   丢包 {p.LossPercent:F1}%   {p.BitrateKbps / 1000.0:F1} Mbps";
+            // HUD 顶部信息：分辨率 + fps + 编解码 + 网络
+            _video.RefreshStreamSize();
+            var hudRes = _video.StreamWidth > 0 && _video.StreamHeight > 0
+                ? $"{_video.StreamWidth}×{_video.StreamHeight}"
+                : $"{_settings.Width}×{_settings.Height}";
+            var text = $"{hudRes}   {p.Fps:F0} fps   {decoder}   {p.EncodeMs:F1}/{p.DecodeMs:F1} ms   网络 {p.RttMs:F1} ms   丢包 {p.LossPercent:F1}%   {p.BitrateKbps / 1000.0:F1} Mbps";
             // HUD 坐标用「视频窗口像素」，不是流的像素（否则齿轮会被算到窗口外面）
             var hudScale = VideoHost.XamlRoot?.RasterizationScale ?? 1.0;
             var w = Math.Max(200, (int)Math.Round(VideoHost.ActualWidth * hudScale));
