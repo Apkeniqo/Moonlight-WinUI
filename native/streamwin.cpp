@@ -258,6 +258,7 @@ void HideMenuToEdge()
 
     g_menuHidden = true;
     g_snapAnimating = false;
+    Diag("menu hide: edge=%d x=%d y=%d", g_menuEdge, g_menuX, g_menuY);
     SetWindowPos(g_menu, HWND_TOP, g_menuX, g_menuY, size, size, SWP_NOACTIVATE);
     SetLayeredWindowAttributes(g_menu, 0, 120, LWA_ALPHA);
     KillTimer(g_win, kMenuTimerId);
@@ -285,6 +286,7 @@ LRESULT CALLBACK MenuProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
     {
         g_menuDragging = true;
         g_menuMoved = false;
+        g_snapAnimating = false;   // 拖动开始：取消未完成的吸附动画
         POINT pt = { GET_X_LPARAM(lp), GET_Y_LPARAM(lp) };
         ClientToScreen(hwnd, &pt);
         g_menuDragStart = pt;
@@ -689,6 +691,18 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
             }
 
             // 贴边无操作 2 秒 → 半隐藏
+            {
+                static ULONGLONG lastProbe = 0;
+                const ULONGLONG now = GetTickCount64();
+                if (now - lastProbe > 1000)
+                {
+                    lastProbe = now;
+                    Diag("menu timer: hidden=%d dragging=%d anim=%d idle=%llu",
+                         g_menuHidden ? 1 : 0, g_menuDragging ? 1 : 0,
+                         g_snapAnimating ? 1 : 0, (unsigned long long)(now - g_menuLastActive));
+                }
+            }
+
             if (!g_menuHidden && !g_menuDragging && !g_snapAnimating &&
                 GetTickCount64() - g_menuLastActive > 2000)
             {
