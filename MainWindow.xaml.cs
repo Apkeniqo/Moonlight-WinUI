@@ -906,6 +906,24 @@ public sealed partial class MainWindow : Window
         PersistSettings($"已删除自定义分辨率 {res.Item1}×{res.Item2}");
     }
 
+    private void DeleteFpsButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (FpsBox.SelectedItem is not ComboBoxItem item || item.Tag is not int fps)
+        {
+            return;
+        }
+
+        if (!_settings.CustomRefreshRates.Contains(fps))
+        {
+            PersistSettings("只能删除自定义刷新率");
+            return;
+        }
+
+        _settings.CustomRefreshRates.Remove(fps);
+        FpsBox.Items.Remove(item);
+        PersistSettings($"已删除自定义刷新率 {fps} Hz");
+    }
+
     private async void CustomResolutionButton_Click(object sender, RoutedEventArgs e)
     {
         var widthBox = new NumberBox
@@ -995,6 +1013,14 @@ public sealed partial class MainWindow : Window
         foreach (var fps in StreamSettings.RefreshRates)
         {
             FpsBox.Items.Add(new ComboBoxItem { Content = $"{fps} Hz", Tag = fps });
+        }
+
+        foreach (var fps in _settings.CustomRefreshRates)
+        {
+            if (!StreamSettings.RefreshRates.Contains(fps))
+            {
+                FpsBox.Items.Add(new ComboBoxItem { Content = $"{fps} Hz", Tag = fps });
+            }
         }
 
         _settingsReady = false;

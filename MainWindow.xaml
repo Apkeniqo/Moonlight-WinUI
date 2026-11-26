@@ -206,6 +206,9 @@
                         <Button Content="&#xE710;" FontFamily="Segoe MDL2 Assets"
                                 ToolTipService.ToolTip="添加自定义刷新率"
                                 Click="CustomFpsButton_Click" />
+                        <Button Content="&#xE74D;" FontFamily="Segoe MDL2 Assets"
+                                ToolTipService.ToolTip="删除当前自定义刷新率"
+                                Click="DeleteFpsButton_Click" />
                     </StackPanel>
 
                     <StackPanel Orientation="Horizontal" Spacing="12">
