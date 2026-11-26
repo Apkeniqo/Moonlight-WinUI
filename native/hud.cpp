@@ -49,6 +49,7 @@ int g_lastX = -99999, g_lastY = -99999, g_lastGearX = -99999, g_lastGearY = -999
 bool g_lastGearVisible = false;
 bool g_hudVisible = true;
 float g_lastOpacity = -1.0f;
+int g_lastOriginX = -99999, g_lastOriginY = -99999;   // 视频窗口屏幕原点（移动检测）
 
 void HudLog(const char* fmt, ...)
 {
@@ -289,7 +290,7 @@ void RenderTextHud()
 
     auto oldBitmap = SelectObject(memDc, bitmap);
 
-    HBRUSH bg = CreateSolidBrush(RGB(0, 0, 0));
+    HBRUSH bg = CreateSolidBrush(RGB(20, 20, 20));
     auto oldBrush = SelectObject(memDc, bg);
     auto oldPen = SelectObject(memDc, GetStockObject(NULL_PEN));
     RoundRect(memDc, 0, 0, width, height, 16, 16);
@@ -403,7 +404,7 @@ extern "C" __declspec(dllexport) int HudInit(void* d3dDevice)
 
     if (!g_font)
     {
-        g_font = CreateFontW(-13, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
+        g_font = CreateFontW(-19, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
                              DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
                              CLEARTYPE_QUALITY, DEFAULT_PITCH, L"Segoe UI");
         g_iconFont = CreateFontW(-18, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
@@ -521,14 +522,21 @@ extern "C" __declspec(dllexport) void HudDraw(void* swapChain, int width, int he
         return;
     }
 
+    // 串流窗口移动/缩放时也要重画：只比较相对坐标的话，卡片会滞后在旧位置
+    POINT curOrigin = { 0, 0 };
+    if (g_owner) { ClientToScreen(g_owner, &curOrigin); }
+    const bool moved = curOrigin.x != g_lastOriginX || curOrigin.y != g_lastOriginY;
+
     const bool textChanged = g_hud.text != g_lastText || g_hud.x != g_lastX || g_hud.y != g_lastY ||
                              g_hud.opacity != g_lastOpacity;
-    if (textChanged)
+    if (textChanged || moved)
     {
         g_lastText = g_hud.text;
         g_lastX = g_hud.x;
         g_lastY = g_hud.y;
         g_lastOpacity = g_hud.opacity;
+        g_lastOriginX = curOrigin.x;
+        g_lastOriginY = curOrigin.y;
         RenderTextHud();
     }
 
