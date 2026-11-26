@@ -624,8 +624,8 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
         break;
 
     case WM_ACTIVATE:
-        // 性能栏只在串流窗口是前台时置顶；切到别的应用就恢复正常层级，不挡别人
-        PERF_SetTopmost(LOWORD(wp) != WA_INACTIVE ? 1 : 0);
+        // 性能栏始终置顶：焦点切走后也要保持可见（用户要求），不再随激活状态降级
+        PERF_SetTopmost(1);
         PositionMenuButton();
         CenterFollowWindow();
         PERF_Reposition();
