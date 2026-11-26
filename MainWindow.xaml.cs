@@ -162,17 +162,26 @@ public sealed partial class MainWindow : Window
     {
         args.MinWidth = 300;
         args.MaxWidth = 300;
+
+        try
+        {
+            System.IO.File.AppendAllText(
+                System.IO.Path.Combine(AppContext.BaseDirectory, "backdrop.log"),
+                $"{DateTime.Now:HH:mm:ss.fff} itemsInfo start={args.ItemsRangeStartIndex} len={args.ItemsRangeRequestedLength}{Environment.NewLine}");
+        }
+        catch { }
     }
 
     /// <summary>ItemsRepeater 生成卡片时挂上点击事件（Tag 带整条 HostEntry 记录）。</summary>
     private void DeviceList_ElementPrepared(ItemsRepeater sender, ItemsRepeaterElementPreparedEventArgs args)
     {
-        if (args.Element is not FrameworkElement element || element.DataContext is not HostEntry host)
+        if (args.Element is not FrameworkElement element)
         {
             return;
         }
 
-        element.Tag = host;
+        // 用索引而不是 DataContext：ElementPrepared 触发时数据绑定可能还没完成
+        element.Tag = args.Index;
         element.Tapped -= DeviceCard_Tapped;
         element.Tapped += DeviceCard_Tapped;
         element.RightTapped -= DeviceCard_RightTapped;
@@ -185,7 +194,7 @@ public sealed partial class MainWindow : Window
             {
                 System.IO.File.AppendAllText(
                     System.IO.Path.Combine(AppContext.BaseDirectory, "backdrop.log"),
-                    $"{DateTime.Now:HH:mm:ss.fff} card {host.DisplayName} size={element.ActualWidth:F0}x{element.ActualHeight:F0} desired={element.DesiredSize.Width:F0}x{element.DesiredSize.Height:F0}{Environment.NewLine}");
+                    $"{DateTime.Now:HH:mm:ss.fff} card idx={args.Index} size={element.ActualWidth:F0}x{element.ActualHeight:F0} desired={element.DesiredSize.Width:F0}x{element.DesiredSize.Height:F0}{Environment.NewLine}");
             }
             catch { }
         });
@@ -291,10 +300,13 @@ public sealed partial class MainWindow : Window
     }
     private void DeviceCard_RightTapped(object sender, RightTappedRoutedEventArgs e)
     {
-        if (sender is not FrameworkElement { Tag: HostEntry host } element)
+        if (sender is not FrameworkElement { Tag: int index } element ||
+            index < 0 || index >= _hosts.Count)
         {
             return;
         }
+
+        var host = _hosts[index];
 
         var menu = new MenuFlyout();
 
@@ -407,9 +419,9 @@ public sealed partial class MainWindow : Window
     }
     private void DeviceCard_Tapped(object sender, TappedRoutedEventArgs e)
     {
-        if (sender is FrameworkElement { Tag: HostEntry host })
+        if (sender is FrameworkElement { Tag: int index } && index >= 0 && index < _hosts.Count)
         {
-            _ = ShowHostPageAsync(host);
+            _ = ShowHostPageAsync(_hosts[index]);
         }
     }
 
