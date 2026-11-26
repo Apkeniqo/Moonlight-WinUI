@@ -152,7 +152,7 @@ bool g_menuDragging = false;
 bool g_menuMoved = false;
 POINT g_menuDragStart = {};
 
-// 客户区在屏幕上的矩形（菜单坐标统一用屏幕坐标，SetWindowPos 也是屏幕坐标）
+// 菜单按钮是 WS_CHILD（父窗口客户区坐标），所有位置都用客户区矩形
 bool GetMenuScreenRect(RECT* out)
 {
     if (!g_win || !out)
@@ -160,14 +160,7 @@ bool GetMenuScreenRect(RECT* out)
         return false;
     }
 
-    RECT client = {};
-    GetClientRect(g_win, &client);
-    POINT origin = { 0, 0 };
-    ClientToScreen(g_win, &origin);
-    out->left = origin.x;
-    out->top = origin.y;
-    out->right = origin.x + client.right;
-    out->bottom = origin.y + client.bottom;
+    GetClientRect(g_win, out);
     return true;
 }
 
