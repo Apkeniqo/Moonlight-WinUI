@@ -154,6 +154,16 @@ public sealed partial class MainWindow : Window
         _ = RefreshHostStatusAsync();
     }
 
+    /// <summary>
+    /// 让 LinedFlowLayout 按 300 宽计算每行能放几张。只靠元素级 MinWidth/MaxWidth 时，
+    /// 布局仍按内容宽（231）算列数 → 卡片出界后才换行（"消失才换行"）。
+    /// </summary>
+    private void DeviceLayout_ItemsInfoRequested(LinedFlowLayout sender, LinedFlowLayoutItemsInfoRequestedEventArgs args)
+    {
+        args.MinWidth = 300;
+        args.MaxWidth = 300;
+    }
+
     /// <summary>ItemsRepeater 生成卡片时挂上点击事件（Tag 带整条 HostEntry 记录）。</summary>
     private void DeviceList_ElementPrepared(ItemsRepeater sender, ItemsRepeaterElementPreparedEventArgs args)
     {
