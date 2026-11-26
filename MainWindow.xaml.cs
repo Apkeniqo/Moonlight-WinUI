@@ -51,7 +51,7 @@ public sealed partial class MainWindow : Window
         InitializeComponent();
 
         Title = $"Moonlight V+ for PC  v{AppVersion.Current}";
-        TitleText.Text = $"Moonlight V+ for PC   v{AppVersion.Current}";
+        TitleText.Text = "Moonlight V+ for PC";
 
         // WinUI 3 的关键能力：内容延伸进标题栏，但最小化/最大化/关闭仍由系统绘制
         ExtendsContentIntoTitleBar = true;
@@ -886,6 +886,22 @@ public sealed partial class MainWindow : Window
         PersistSettings($"已添加刷新率：{fps} Hz");
     }
 
+    private void AboutGithubLink_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = "https://github.com/Apkeniqo/Moonlight-WinUI",
+                UseShellExecute = true,
+            });
+        }
+        catch
+        {
+            PersistSettings("无法打开浏览器");
+        }
+    }
+
     private void DeleteResolutionButton_Click(object sender, RoutedEventArgs e)
     {
         if (ResolutionBox.SelectedItem is not ComboBoxItem item ||
@@ -1032,6 +1048,8 @@ public sealed partial class MainWindow : Window
 
         var fpsIndex = Array.IndexOf(StreamSettings.RefreshRates, _settings.Fps);
         FpsBox.SelectedIndex = fpsIndex >= 0 ? fpsIndex : 1;                        // 默认 60
+
+        AboutVersionText.Text = $"本体版本 v{AppVersion.Current}";
 
         BitrateBox.Value = Math.Clamp(_settings.BitrateKbps / 1000.0, 5, 100);
         MouseSensitivitySlider.Value = Math.Clamp(_settings.MouseSensitivity, 0.3, 2.0);
