@@ -16,7 +16,7 @@
 
         </Grid>
 
-        <NavigationView x:Name="Nav" Grid.Row="1" IsSettingsVisible="True" PaneDisplayMode="Left"
+        <NavigationView x:Name="Nav" Grid.Row="1" IsSettingsVisible="False" PaneDisplayMode="Left"
                         OpenPaneLength="220" IsBackButtonVisible="Collapsed"
                         SelectionChanged="Nav_SelectionChanged" ItemInvoked="Nav_ItemInvoked">
             <NavigationView.MenuItems>
@@ -32,6 +32,11 @@
                 </NavigationViewItem>
             </NavigationView.MenuItems>
             <NavigationView.FooterMenuItems>
+                <NavigationViewItem Content="设置" Tag="settings">
+                    <NavigationViewItem.Icon>
+                        <FontIcon Glyph="&#xE713;" />
+                    </NavigationViewItem.Icon>
+                </NavigationViewItem>
                 <NavigationViewItem Content="关于" Tag="about">
                     <NavigationViewItem.Icon>
                         <FontIcon Glyph="&#xE946;" />
