@@ -152,10 +152,33 @@ bool g_menuDragging = false;
 bool g_menuMoved = false;
 POINT g_menuDragStart = {};
 
+// 客户区在屏幕上的矩形（菜单坐标统一用屏幕坐标，SetWindowPos 也是屏幕坐标）
+bool GetMenuScreenRect(RECT* out)
+{
+    if (!g_win || !out)
+    {
+        return false;
+    }
+
+    RECT client = {};
+    GetClientRect(g_win, &client);
+    POINT origin = { 0, 0 };
+    ClientToScreen(g_win, &origin);
+    out->left = origin.x;
+    out->top = origin.y;
+    out->right = origin.x + client.right;
+    out->bottom = origin.y + client.bottom;
+    return true;
+}
+
 void ClampMenu()
 {
     RECT rc = {};
-    GetWindowRect(g_win, &rc);
+    if (!GetMenuScreenRect(&rc))
+    {
+        return;
+    }
+
     const int size = g_menuSize;
     if (g_menuX < rc.left) { g_menuX = rc.left; }
     if (g_menuY < rc.top) { g_menuY = rc.top; }
@@ -190,11 +213,13 @@ void PositionMenuButton()
 
     if (g_menuX < 0 || g_menuY < 0)
     {
-        // 首次：放窗口右上角（屏幕坐标，与 SetWindowPos 保持一致）
+        // 首次：放画面右上角（屏幕坐标，与 SetWindowPos 保持一致）
         RECT rc = {};
-        GetWindowRect(g_win, &rc);
-        g_menuX = rc.right - g_menuSize - 16;
-        g_menuY = rc.top + 14;
+        if (GetMenuScreenRect(&rc))
+        {
+            g_menuX = rc.right - g_menuSize - 16;
+            g_menuY = rc.top + 14;
+        }
     }
 
     ClampMenu();
@@ -206,7 +231,10 @@ void PositionMenuButton()
 void SnapMenuToEdge()
 {
     RECT rc = {};
-    GetWindowRect(g_win, &rc);
+    if (!GetMenuScreenRect(&rc))
+    {
+        return;
+    }
 
     const int size = g_menuSize;
     const int margin = 12;   // 保持吸附后离边缘的间距
@@ -245,7 +273,10 @@ void HideMenuToEdge()
     }
 
     RECT rc = {};
-    GetWindowRect(g_win, &rc);
+    if (!GetMenuScreenRect(&rc))
+    {
+        return;
+    }
     const int size = g_menuSize;
 
     switch (g_menuEdge)
