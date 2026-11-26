@@ -49,9 +49,10 @@ bool g_snapAnimating = false;
 bool g_menuHidden = false;                   // 已半隐藏到边缘
 bool g_snapToHide = false;                   // 当前吸附动画的目标是"半隐藏位"
 int g_snapStartX = 0, g_snapStartY = 0;       // 动画起点
-int g_snapCtrlX = 0, g_snapCtrlY = 0;         // 二次贝塞尔控制点（曲线路径）
+int g_snapCtrl1X = 0, g_snapCtrl1Y = 0;       // 三次贝塞尔控制点 1（起点方向）
+int g_snapCtrl2X = 0, g_snapCtrl2Y = 0;       // 三次贝塞尔控制点 2（终点切向）
 ULONGLONG g_snapStartTick = 0;                // 动画开始时刻
-const int kSnapDurationMs = 170;              // 吸附时长
+const int kSnapDurationMs = 260;              // 吸附时长
 
 extern int g_menuEdge;   // 定义在下面（贴着哪条边）
 
@@ -64,18 +65,25 @@ void SetupSnapPath(int fromX, int fromY, int toX, int toY)
     g_snapStartY = fromY;
     g_snapStartTick = GetTickCount64();
 
+    const double dx = (double)(toX - fromX);
+    const double dy = (double)(toY - fromY);
+
     // g_menuEdge: 0右 1左 2上 3下
     if (g_menuEdge == 0 || g_menuEdge == 1)
     {
-        // 贴左右边：终点切向竖直 → 控制点与终点同 X，起点 Y
-        g_snapCtrlX = toX;
-        g_snapCtrlY = fromY;
+        // 贴左右边：先横向靠近（P1 沿起点方向 40%），再沿边竖直滑入（P2 与终点同 X）
+        g_snapCtrl1X = (int)(fromX + dx * 0.4);
+        g_snapCtrl1Y = fromY;
+        g_snapCtrl2X = toX;
+        g_snapCtrl2Y = (int)(toY - dy * 0.4);
     }
     else
     {
-        // 贴上下边：终点切向水平 → 控制点与终点同 Y，起点 X
-        g_snapCtrlX = fromX;
-        g_snapCtrlY = toY;
+        // 贴上下边：先纵向靠近，再沿边水平滑入
+        g_snapCtrl1X = fromX;
+        g_snapCtrl1Y = (int)(fromY + dy * 0.4);
+        g_snapCtrl2X = (int)(toX - dx * 0.4);
+        g_snapCtrl2Y = toY;
     }
 }
 int  g_menuEdge = 0;                         // 0右 1左 2上 3下
@@ -746,12 +754,14 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
                 const double inv = 1.0 - t;
                 const double ease = 1.0 - inv * inv * inv;   // ease-out cubic
 
-                // 二次贝塞尔：P0 -> 控制点 -> P2（弧线路径）
-                const double b0 = (1.0 - ease) * (1.0 - ease);
-                const double b1 = 2.0 * (1.0 - ease) * ease;
-                const double b2 = ease * ease;
-                g_menuX = (int)(b0 * g_snapStartX + b1 * g_snapCtrlX + b2 * g_snapTargetX);
-                g_menuY = (int)(b0 * g_snapStartY + b1 * g_snapCtrlY + b2 * g_snapTargetY);
+                // 三次贝塞尔：P0 -> P1 -> P2 -> P3（起点方向接近 + 终点沿边滑入）
+                const double u = 1.0 - ease;
+                const double w0 = u * u * u;
+                const double w1 = 3.0 * u * u * ease;
+                const double w2 = 3.0 * u * ease * ease;
+                const double w3 = ease * ease * ease;
+                g_menuX = (int)(w0 * g_snapStartX + w1 * g_snapCtrl1X + w2 * g_snapCtrl2X + w3 * g_snapTargetX);
+                g_menuY = (int)(w0 * g_snapStartY + w1 * g_snapCtrl1Y + w2 * g_snapCtrl2Y + w3 * g_snapTargetY);
 
                 if (t >= 1.0)
                 {
