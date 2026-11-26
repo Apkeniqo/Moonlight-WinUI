@@ -167,6 +167,18 @@ public sealed partial class MainWindow : Window
         element.Tapped += DeviceCard_Tapped;
         element.RightTapped -= DeviceCard_RightTapped;
         element.RightTapped += DeviceCard_RightTapped;
+
+        // 诊断：卡片实际宽高（布局完成后记录，确认等宽是否生效）
+        DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
+        {
+            try
+            {
+                System.IO.File.AppendAllText(
+                    System.IO.Path.Combine(AppContext.BaseDirectory, "backdrop.log"),
+                    $"{DateTime.Now:HH:mm:ss.fff} card {host.DisplayName} size={element.ActualWidth:F0}x{element.ActualHeight:F0} desired={element.DesiredSize.Width:F0}x{element.DesiredSize.Height:F0}{Environment.NewLine}");
+            }
+            catch { }
+        });
     }
 
     /// <summary>电脑页的「刷新」按钮：重新探测所有主机的在线状态（探测期间转圈并禁用按钮）。</summary>

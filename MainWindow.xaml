@@ -52,12 +52,12 @@
                         <ItemsRepeater x:Name="DeviceList" ElementPrepared="DeviceList_ElementPrepared">
                             <!-- LinedFlowLayout 自带过渡动画：条目增删和"视图尺寸变化"（拖动窗口换行）都会播放 -->
                             <ItemsRepeater.Layout>
-                                <LinedFlowLayout ItemsStretch="None" LineHeight="96"
+                                <LinedFlowLayout ItemsStretch="Fill" LineHeight="96"
                                                  LineSpacing="10" MinItemSpacing="10" />
                             </ItemsRepeater.Layout>
                             <ItemsRepeater.ItemTemplate>
                                 <DataTemplate x:DataType="local:HostEntry">
-                                    <Grid Width="300" Margin="0,0,10,10">
+                                    <Grid Margin="0,0,10,10" MinWidth="240">
                                         <Border Height="96" Padding="16" CornerRadius="8" BorderThickness="1"
                                                 Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
                                                 BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}">
