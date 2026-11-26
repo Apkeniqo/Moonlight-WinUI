@@ -18,9 +18,6 @@ int  ML_HostChildWin32(void* parent, int w, int h);
 void ML_Resize(int w, int h);
 int  ML_ApplyCursor(void);
 void ML_SetGearEnabled(int enabled);
-int  PNL_Show(void* parent, int width, int height);
-int  PNL_IsVisible(void);
-void PNL_Center(void);
 void PERF_Reposition(void);
 void PNL_RequestOpen(void);
 void PERF_SetTopmost(int on);
@@ -617,7 +614,6 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
         if (g_moveCallback) { g_moveCallback(); }   // 缩放时也让面板实时跟随
         PERF_Reposition();
         PositionMenuButton();
-        if (PNL_IsVisible()) { PNL_Center(); }   // 原生面板跟随窗口保持居中
         return 0;
 
     case WM_MOVE:

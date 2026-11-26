@@ -116,19 +116,10 @@ public sealed class VideoSurface : IDisposable
     [DllImport(NativeDll, CallingConvention = CallingConvention.Cdecl)]
     private static extern void SUI_SetVideoReady(int ready);
 
-    [DllImport(NativeDll, CallingConvention = CallingConvention.Cdecl)]
-    private static extern void PNL_SetState(int width, int height, int kbps, int fullscreen);
-
     public delegate void PanelApplyDelegate(int width, int height, int kbps, int fullscreen);
 
     [DllImport(NativeDll, CallingConvention = CallingConvention.Cdecl)]
     private static extern void PNL_SetApplyCallback(IntPtr callback);
-
-    [DllImport(NativeDll, CallingConvention = CallingConvention.Cdecl)]
-    private static extern void PNL_Show(IntPtr parent, int width, int height);
-
-    [DllImport(NativeDll, CallingConvention = CallingConvention.Cdecl)]
-    private static extern void PNL_Hide();
 
     [DllImport(NativeDll, CallingConvention = CallingConvention.Cdecl)]
     private static extern int PNL_TakeOpenRequest();
@@ -152,14 +143,6 @@ public sealed class VideoSurface : IDisposable
         _panelApply = callback;
         PNL_SetApplyCallback(System.Runtime.InteropServices.Marshal.GetFunctionPointerForDelegate(callback));
     }
-
-    public void ShowControlPanel(int width, int height, int kbps, bool fullscreen)
-    {
-        PNL_SetState(width, height, kbps, fullscreen ? 1 : 0);
-        PNL_Show(SUI_GetHwnd(), 0, 0);   // 0,0 = 由原生按串流窗口大小自动缩放
-    }
-
-    public void HideControlPanel() => PNL_Hide();
 
     /// <summary>原生串流窗口句柄（用来给 WinUI 弹窗定位）。</summary>
     public IntPtr StreamWindowHandle => SUI_GetHwnd();
