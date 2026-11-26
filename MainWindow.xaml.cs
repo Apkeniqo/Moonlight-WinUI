@@ -1114,6 +1114,7 @@ public sealed partial class MainWindow : Window
     {
         var items = new (string Label, int Bit)[]
         {
+            ("分辨率", 1 << 6),
             ("FPS", 1 << 0),
             ("编码格式", 1 << 1),
             ("解码耗时", 1 << 2),

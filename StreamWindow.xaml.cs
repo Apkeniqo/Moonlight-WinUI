@@ -1055,11 +1055,14 @@ public sealed partial class StreamWindow : Window
                 var single = pos == 1 || pos == 4 || _settings.OverlayCornerSingleLine;
                 var lines = new List<string>(7);
 
-                // 分辨率：始终显示在第一行（流尺寸实时取，动态改分辨率会跟着变）
-                _video.RefreshStreamSize();
-                lines.Add(_video.StreamWidth > 0 && _video.StreamHeight > 0
-                    ? $"{_video.StreamWidth}×{_video.StreamHeight}"
-                    : $"{_settings.Width}×{_settings.Height}");
+                // 分辨率（显示项目 bit 6）：流尺寸实时取，动态改分辨率会跟着变
+                if ((_settings.OverlayItems & 64) != 0)
+                {
+                    _video.RefreshStreamSize();
+                    lines.Add(_video.StreamWidth > 0 && _video.StreamHeight > 0
+                        ? $"{_video.StreamWidth}×{_video.StreamHeight}"
+                        : $"{_settings.Width}×{_settings.Height}");
+                }
 
                 if ((_settings.OverlayItems & 1) != 0) { lines.Add($"{p.Fps:F0} fps"); }
                 if ((_settings.OverlayItems & 2) != 0)

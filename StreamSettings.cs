@@ -52,7 +52,7 @@ public sealed class StreamSettings
     public bool OverlayCornerSingleLine { get; set; } = true;
 
     /// <summary>性能浮窗显示项目位掩码：1 FPS / 2 编码 / 4 解码耗时 / 8 网络延迟 / 16 丢包 / 32 码率。</summary>
-    public int OverlayItems { get; set; } = 0x3F;
+    public int OverlayItems { get; set; } = 0x7F;   // bit6 = 分辨率
 
     /// <summary>Qt: showperfoverlay —— 串流窗口顶部显示性能浮窗（fps/编解码/延时/丢包/码率）。</summary>
     public bool ShowPerformanceOverlay { get; set; } = true;
@@ -142,6 +142,12 @@ public sealed class StreamSettings
         if (MouseSensitivity is < 0.2 or > 3.0)
         {
             MouseSensitivity = 1.0;
+        }
+
+        // 旧版默认显示项是 0x3F（不含分辨率 bit6），升级成 0x7F
+        if (OverlayItems == 0x3F)
+        {
+            OverlayItems = 0x7F;
         }
 
         if (Width < 320 || Height < 200)
