@@ -49,9 +49,21 @@
                     <ItemsControl x:Name="DeviceList" Grid.Row="1" HorizontalContentAlignment="Stretch"
                                   HorizontalAlignment="Stretch" VerticalAlignment="Top"
                                   Margin="0,56,0,0">
+                        <!-- 重排动画：位置变化时由系统补间（拖动窗口换行也走这个） -->
+                        <ItemsControl.ItemContainerTransitions>
+                            <TransitionCollection>
+                                <RepositionThemeTransition />
+                            </TransitionCollection>
+                        </ItemsControl.ItemContainerTransitions>
                         <ItemsControl.ItemsPanel>
                             <ItemsPanelTemplate>
-                                <local:AdaptiveWrapPanel ItemWidth="300" MaxPanelWidth="0" Spacing="10" />
+                                <local:AdaptiveWrapPanel ItemWidth="300" MaxPanelWidth="0" Spacing="10">
+                                    <local:AdaptiveWrapPanel.ChildrenTransitions>
+                                        <TransitionCollection>
+                                            <RepositionThemeTransition />
+                                        </TransitionCollection>
+                                    </local:AdaptiveWrapPanel.ChildrenTransitions>
+                                </local:AdaptiveWrapPanel>
                             </ItemsPanelTemplate>
                         </ItemsControl.ItemsPanel>
                     </ItemsControl>
