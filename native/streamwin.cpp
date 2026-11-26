@@ -20,6 +20,7 @@ int  ML_ApplyCursor(void);
 void ML_SetGearEnabled(int enabled);
 void PERF_Reposition(void);
 void PNL_RequestOpen(void);
+void HudMoveNow(void);
 void PERF_SetTopmost(int on);
 }
 
@@ -611,12 +612,14 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
         }
 
         ResizeVideo();
+        HudMoveNow();
         if (g_moveCallback) { g_moveCallback(); }   // 缩放时也让面板实时跟随
         PERF_Reposition();
         PositionMenuButton();
         return 0;
 
     case WM_MOVE:
+        HudMoveNow();   // 性能栏立即跟随（比等下一帧 HudDraw 更跟手）
         PositionMenuButton();
         CenterFollowWindow();
         PERF_Reposition();   // 性能卡片跟随窗口实时定位

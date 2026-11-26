@@ -430,8 +430,19 @@ extern "C" __declspec(dllexport) void HudSetOwner(void* videoHwnd)
         return;
     }
 
-    if (!g_textWnd) { g_textWnd = CreateLayerWindow(false); }
-    // 齿轮模块已废弃：不再创建窗口
+    // 退出串流再进来时视频窗口是重建的：旧的层窗口挂在已销毁的 owner 上，
+    // 必须拆掉重建，否则性能栏永远不出现。
+    if (g_textWnd) { DestroyWindow(g_textWnd); g_textWnd = nullptr; }
+    if (g_gearWnd) { DestroyWindow(g_gearWnd); g_gearWnd = nullptr; }
+
+    g_lastHudW = 0;
+    g_lastHudH = 0;
+    g_lastText.clear();
+    g_lastX = g_lastY = -99999;
+    g_lastOpacity = -1.0f;
+    g_lastOriginX = g_lastOriginY = -99999;
+
+    g_textWnd = CreateLayerWindow(false);
 
     HudLog("HudSetOwner owner=%p text=%p gear=%p", g_owner, g_textWnd, g_gearWnd);
 }
@@ -524,6 +535,11 @@ void MoveTextHud()
     ClientToScreen(g_owner, &origin);
     SetWindowPos(g_textWnd, nullptr, origin.x + drawX, origin.y + g_hud.y, 0, 0,
                  SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
+}
+
+extern "C" __declspec(dllexport) void HudMoveNow(void)
+{
+    MoveTextHud();
 }
 
 extern "C" __declspec(dllexport) void HudSetVisible(int visible)
