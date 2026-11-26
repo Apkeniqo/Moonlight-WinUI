@@ -47,6 +47,7 @@ bool g_menuHover = false;
 int  g_snapTargetX = 0, g_snapTargetY = 0;   // 吸附目标（动画用）
 bool g_snapAnimating = false;
 bool g_menuHidden = false;                   // 已半隐藏到边缘
+bool g_snapToHide = false;                   // 当前吸附动画的目标是"半隐藏位"
 int  g_menuEdge = 0;                         // 0右 1左 2上 3下
 ULONGLONG g_menuLastActive = 0;              // 最后一次悬停/拖动时间
 const int kMenuTimerId = 4;                  // 吸附/半隐藏定时器
@@ -250,8 +251,9 @@ void SnapMenuToEdge()
     else if (best == 2) { g_snapTargetY = margin; }
     else { g_snapTargetY = rc.bottom - size - margin; }
 
-    // 平滑吸附（每 16ms 走 1/12 距离，约 200ms 到位）
+    // 平滑吸附（每 16ms 走 1/7 距离，约 110ms 到位）
     g_snapAnimating = true;
+    g_snapToHide = false;
     g_menuHidden = false;
     g_menuLastActive = GetTickCount64();
     if (g_win) { SetTimer(g_win, kMenuTimerId, 16, nullptr); }
@@ -280,12 +282,20 @@ void HideMenuToEdge()
     default: g_menuX = rc.right - size / 2; break;             // 右
     }
 
-    g_menuHidden = true;
-    g_snapAnimating = false;
-    Diag("menu hide: edge=%d x=%d y=%d", g_menuEdge, g_menuX, g_menuY);
-    SetWindowPos(g_menu, HWND_TOP, g_menuX, g_menuY, size, size, SWP_NOACTIVATE);
-    SetLayeredWindowAttributes(g_menu, 0, 120, LWA_ALPHA);
-    KillTimer(g_win, kMenuTimerId);
+    g_snapTargetX = g_menuX;
+    g_snapTargetY = g_menuY;
+    switch (g_menuEdge)
+    {
+    case 1:  g_snapTargetX = rc.left - size / 2 + 2; break;    // 左
+    case 2:  g_snapTargetY = rc.top - size / 2 + 2; break;     // 上
+    case 3:  g_snapTargetY = rc.bottom - size / 2; break;      // 下
+    default: g_snapTargetX = rc.right - size / 2; break;       // 右
+    }
+
+    Diag("menu hide animate: edge=%d from=%d,%d to=%d,%d", g_menuEdge, g_menuX, g_menuY, g_snapTargetX, g_snapTargetY);
+    g_snapToHide = true;
+    g_snapAnimating = true;
+    SetTimer(g_win, kMenuTimerId, 16, nullptr);
 }
 
 LRESULT CALLBACK MenuProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
@@ -704,7 +714,14 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
                     g_menuX = g_snapTargetX;
                     g_menuY = g_snapTargetY;
                     g_snapAnimating = false;
-                    // 不 KillTimer：定时器继续跑，负责 2 秒后的半隐藏
+                    if (g_snapToHide)
+                    {
+                        g_snapToHide = false;
+                        g_menuHidden = true;
+                        SetLayeredWindowAttributes(g_menu, 0, 120, LWA_ALPHA);
+                        KillTimer(hwnd, kMenuTimerId);
+                    }
+                    // 否则不 KillTimer：继续跑，负责 2 秒后的半隐藏
                 }
                 else
                 {
