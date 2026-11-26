@@ -34,6 +34,7 @@ public sealed partial class MainWindow : Window
     private int _currentHostPort = 47984;
     private string? _lastNavTag;
     private List<HostEntry> _hosts = new();
+    private readonly Dictionary<string, TextBlock> _statusLabels = new(StringComparer.OrdinalIgnoreCase);
     private readonly StreamSettings _settings = StreamSettings.Load();
 
     /// <summary>主窗口实例（串流窗口要在这里弹错误提示）。</summary>
@@ -149,61 +150,96 @@ public sealed partial class MainWindow : Window
     private void BuildDeviceCards()
     {
         _hosts = HostStore.Load();
-        DeviceList.ItemsSource = null;
-        DeviceList.ItemsSource = _hosts;   // 数据绑定，卡片由 DataTemplate 生成
+        DeviceList.Items.Clear();
+        _statusLabels.Clear();
+
+        foreach (var host in _hosts)
+        {
+            var card = BuildCard(host, "检测中…", out var statusText);
+            DeviceList.Items.Add(card);
+            _statusLabels[host.Address] = statusText;
+        }
+
         _ = RefreshHostStatusAsync();
     }
 
-    /// <summary>
-    /// 让 LinedFlowLayout 按 300 宽计算每行能放几张。只靠元素级 MinWidth/MaxWidth 时，
-    /// 布局仍按内容宽（231）算列数 → 卡片出界后才换行（"消失才换行"）。
-    /// </summary>
-    private void DeviceLayout_ItemsInfoRequested(LinedFlowLayout sender, LinedFlowLayoutItemsInfoRequestedEventArgs args)
+    private FrameworkElement BuildCard(HostEntry host, string status, out TextBlock statusText)
     {
-        args.MinWidth = 300;
-        args.MaxWidth = 300;
+        var icon = new Border
+        {
+            Width = 56,
+            Height = 56,
+            CornerRadius = new CornerRadius(12),
+            // 统一灰色底（微软商店那种中性配色），靠图标本身区分
+            Background = new SolidColorBrush(Windows.UI.Color.FromArgb(255, 58, 58, 58)),
+            Child = new FontIcon
+            {
+                Glyph = "\uE7F4",     // 统一用 PC 图标，底色区分设备
+                FontSize = 26,
+                Foreground = new SolidColorBrush(Colors.White),
+                HorizontalAlignment = HorizontalAlignment.Center,
+                VerticalAlignment = VerticalAlignment.Center
+            }
+        };
+
+        statusText = new TextBlock
+        {
+            Text = status,
+            FontSize = 12,
+            Opacity = 0.65,
+            TextTrimming = TextTrimming.CharacterEllipsis,
+        };
+
+        var texts = new StackPanel
+        {
+            Spacing = 4,
+            Margin = new Thickness(16, 0, 0, 0),
+            VerticalAlignment = VerticalAlignment.Center
+        };
+        texts.Children.Add(new TextBlock
+        {
+            Text = host.DisplayName,
+            FontSize = 15,
+            FontWeight = FontWeights.SemiBold,
+            TextTrimming = TextTrimming.CharacterEllipsis,
+        });
+        texts.Children.Add(statusText);
+
+        var row = new StackPanel { Orientation = Orientation.Horizontal };
+        row.Children.Add(icon);
+        row.Children.Add(texts);
+
+        var card = new Border
+        {
+            Height = 96,
+            Padding = new Thickness(16),
+            CornerRadius = new CornerRadius(8),
+            BorderThickness = new Thickness(1),
+            Child = row
+        };
+        card.Background = (Brush)Application.Current.Resources["CardBackgroundFillColorDefaultBrush"];
+        card.BorderBrush = (Brush)Application.Current.Resources["CardStrokeColorDefaultBrush"];
+
+        // 整张卡片可点：进主机详情页，读 /applist（Tag 带整条记录，端口/显示名都在里面）
+        // slot 固定尺寸（卡片 ×1.05），卡片在里面整体缩放，命中层不缩放。
+        var slot = FluentCard.CreateSlot(card, DeviceList.Items.Count);
+        slot.Tag = host;
+        slot.Tapped += DeviceCard_Tapped;
+        slot.RightTapped += DeviceCard_RightTapped;
+        return slot;
     }
 
-    /// <summary>ItemsRepeater 生成卡片时挂上点击事件（Tag 带整条 HostEntry 记录）。</summary>
-    private void DeviceList_ElementPrepared(ItemsRepeater sender, ItemsRepeaterElementPreparedEventArgs args)
+    private static string Letter(string name)
     {
-        // 诊断：无条件记一行，确认事件到底有没有触发
-        try
+        foreach (var ch in name)
         {
-            System.IO.File.AppendAllText(
-                System.IO.Path.Combine(AppContext.BaseDirectory, "backdrop.log"),
-                $"{DateTime.Now:HH:mm:ss.fff} elementPrepared idx={args.Index} el={(args.Element?.GetType().Name ?? "null")}{Environment.NewLine}");
-        }
-        catch { }
-
-        if (args.Element is not FrameworkElement element)
-        {
-            return;
-        }
-
-        // LinedFlowLayout 会尝试 resize 项目（卡片宽窄不一）——社区 workaround：
-        // 在元素上设 MinWidth/MaxWidth，布局就压不动它了。
-        element.MinWidth = 300;
-        element.MaxWidth = 300;
-
-        // 用索引而不是 DataContext：ElementPrepared 触发时数据绑定可能还没完成
-        element.Tag = args.Index;
-        element.Tapped -= DeviceCard_Tapped;
-        element.Tapped += DeviceCard_Tapped;
-        element.RightTapped -= DeviceCard_RightTapped;
-        element.RightTapped += DeviceCard_RightTapped;
-
-        // 诊断：卡片实际宽高（布局完成后记录，确认等宽是否生效）
-        DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
-        {
-            try
+            if (char.IsLetterOrDigit(ch))
             {
-                System.IO.File.AppendAllText(
-                    System.IO.Path.Combine(AppContext.BaseDirectory, "backdrop.log"),
-                    $"{DateTime.Now:HH:mm:ss.fff} card idx={args.Index} size={element.ActualWidth:F0}x{element.ActualHeight:F0} desired={element.DesiredSize.Width:F0}x{element.DesiredSize.Height:F0}{Environment.NewLine}");
+                return char.ToUpperInvariant(ch).ToString();
             }
-            catch { }
-        });
+        }
+
+        return "?";
     }
 
     /// <summary>电脑页的「刷新」按钮：重新探测所有主机的在线状态（探测期间转圈并禁用按钮）。</summary>
@@ -244,8 +280,13 @@ public sealed partial class MainWindow : Window
             for (var i = 0; i < snapshot.Count && i < results.Length; i++)
             {
                 var host = snapshot[i];
+                if (!_statusLabels.TryGetValue(host.Address, out var label))
+                {
+                    continue;
+                }
+
                 var online = results[i];
-                host.StatusText = online
+                label.Text = online
                     ? (string.Equals(host.DisplayName, host.Address, StringComparison.OrdinalIgnoreCase)
                         ? "在线"
                         : $"在线 · {host.Address}")
@@ -306,13 +347,10 @@ public sealed partial class MainWindow : Window
     }
     private void DeviceCard_RightTapped(object sender, RightTappedRoutedEventArgs e)
     {
-        if (sender is not FrameworkElement { Tag: int index } element ||
-            index < 0 || index >= _hosts.Count)
+        if (sender is not FrameworkElement { Tag: HostEntry host } element)
         {
             return;
         }
-
-        var host = _hosts[index];
 
         var menu = new MenuFlyout();
 
@@ -425,9 +463,9 @@ public sealed partial class MainWindow : Window
     }
     private void DeviceCard_Tapped(object sender, TappedRoutedEventArgs e)
     {
-        if (sender is FrameworkElement { Tag: int index } && index >= 0 && index < _hosts.Count)
+        if (sender is FrameworkElement { Tag: HostEntry host })
         {
-            _ = ShowHostPageAsync(_hosts[index]);
+            _ = ShowHostPageAsync(host);
         }
     }
 
