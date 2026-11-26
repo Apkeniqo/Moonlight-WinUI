@@ -50,6 +50,7 @@ bool g_lastGearVisible = false;
 bool g_hudVisible = true;
 float g_lastOpacity = -1.0f;
 int g_lastOriginX = -99999, g_lastOriginY = -99999;   // 视频窗口屏幕原点（移动检测）
+int g_lastHudW = 0, g_lastHudH = 0;                   // 上次 HUD 层尺寸（移动时复用）
 
 void HudLog(const char* fmt, ...)
 {
@@ -209,7 +210,7 @@ HWND CreateLayerWindow(bool clickable)
 }
 
 // GDI 绘制不会写 alpha 通道；分层窗口按 alpha 做命中测试，所以要手动补 255
-void FixAlpha(void* bits, int width, int height)
+void FixAlpha(void* bits, int width, int height, float opacity)
 {
     auto* px = (unsigned char*)bits;
     if (!px)
@@ -217,11 +218,13 @@ void FixAlpha(void* bits, int width, int height)
         return;
     }
 
+    const int bgAlpha = (int)(255.0f * (opacity < 0 ? 0 : (opacity > 1 ? 1 : opacity)));
     for (int i = 0; i < width * height; i++)
     {
         unsigned char* p = px + i * 4;
         const bool painted = p[0] || p[1] || p[2];
-        p[3] = painted ? 255 : 0;
+        const bool isText = p[0] > 100 && p[1] > 100 && p[2] > 100;
+        p[3] = painted ? (isText ? 255 : (unsigned char)bgAlpha) : 0;
     }
 }
 
@@ -304,7 +307,9 @@ void RenderTextHud()
     RECT textRc = { padX, padY, width - padX, height - padY };
     DrawTextW(memDc, g_hud.text.c_str(), -1, &textRc, DT_SINGLELINE | DT_NOPREFIX | DT_VCENTER);
 
-    FixAlpha(bits, width, height);
+    FixAlpha(bits, width, height, g_hud.opacity);
+    g_lastHudW = width;
+    g_lastHudH = height;
 
     int drawX = g_hud.x;
     if (g_hud.align != 0)
@@ -384,7 +389,7 @@ void RenderGearHud()
     RECT iconRc = { 0, 8, size, size + 4 };
     DrawTextW(memDc, L"\uE713", -1, &iconRc, DT_SINGLELINE | DT_NOPREFIX | DT_CENTER);
 
-    FixAlpha(bits, size, size);
+    FixAlpha(bits, size, size, g_hud.opacity);
 
     POINT origin = { 0, 0 };
     ClientToScreen(g_owner, &origin);
@@ -497,6 +502,30 @@ extern "C" __declspec(dllexport) int HudHitGear(int x, int y)
     return 0;
 }
 
+// 只是窗口移动：直接把分层窗口挪过去，不重绘内容
+void MoveTextHud()
+{
+    if (!g_textWnd || !g_owner || g_lastHudW <= 0 || g_lastHudH <= 0)
+    {
+        return;
+    }
+
+    int drawX = g_hud.x;
+    if (g_hud.align != 0)
+    {
+        RECT rc = {};
+        GetClientRect(g_owner, &rc);
+        const int avail = rc.right - rc.left;
+        drawX = (g_hud.align == 1) ? (avail - g_lastHudW) / 2 : (avail - g_lastHudW - 16);
+        if (drawX < 0) { drawX = 0; }
+    }
+
+    POINT origin = { 0, 0 };
+    ClientToScreen(g_owner, &origin);
+    SetWindowPos(g_textWnd, nullptr, origin.x + drawX, origin.y + g_hud.y, 0, 0,
+                 SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
+}
+
 extern "C" __declspec(dllexport) void HudSetVisible(int visible)
 {
     g_hudVisible = visible != 0;
@@ -529,7 +558,7 @@ extern "C" __declspec(dllexport) void HudDraw(void* swapChain, int width, int he
 
     const bool textChanged = g_hud.text != g_lastText || g_hud.x != g_lastX || g_hud.y != g_lastY ||
                              g_hud.opacity != g_lastOpacity;
-    if (textChanged || moved)
+    if (textChanged)
     {
         g_lastText = g_hud.text;
         g_lastX = g_hud.x;
@@ -538,6 +567,12 @@ extern "C" __declspec(dllexport) void HudDraw(void* swapChain, int width, int he
         g_lastOriginX = curOrigin.x;
         g_lastOriginY = curOrigin.y;
         RenderTextHud();
+    }
+    else if (moved)
+    {
+        g_lastOriginX = curOrigin.x;
+        g_lastOriginY = curOrigin.y;
+        MoveTextHud();
     }
 
     const bool gearChanged = g_hud.gearVisible != g_lastGearVisible ||
