@@ -182,16 +182,14 @@
                     </StackPanel>
 
                     <StackPanel Orientation="Horizontal" Spacing="12">
-                        <TextBlock Text="主机显示缩放" Width="110" VerticalAlignment="Center" />
-                        <ComboBox x:Name="ScaleHostBox" Width="200" PlaceholderText="选择主机"
-                                  SelectionChanged="ScaleHostBox_SelectionChanged" />
-                        <ComboBox x:Name="HostScaleBox" Width="110" IsEnabled="False"
+                        <TextBlock Text="显示缩放" Width="110" VerticalAlignment="Center" />
+                        <ComboBox x:Name="HostScaleBox" Width="110"
                                   SelectionChanged="HostScaleBox_SelectionChanged" />
                         <ProgressRing x:Name="HostScaleRing" Width="16" Height="16" IsActive="False" />
                     </StackPanel>
                     <TextBlock x:Name="HostScaleHint" Opacity="0.6" FontSize="12" TextWrapping="Wrap"
                                Margin="0,-8,0,0"
-                               Text="调整主机 Windows 的显示缩放（DPI），立即生效，不需要重连。" />
+                               Text="调整主机 Windows 的显示缩放（DPI），对所有已配对的电脑生效，立即生效，不需要重连。" />
 
                     <StackPanel Orientation="Horizontal" Spacing="12">
                         <TextBlock Text="应用卡片行数" Width="110" VerticalAlignment="Center" />

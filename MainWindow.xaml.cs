@@ -99,6 +99,10 @@ public sealed partial class MainWindow : Window
 
         RootGrid.Loaded += (_, _) => ApplyBackdrop(_settings.BackdropKind);   // 按设置恢复，别写死 Mica
 
+        // 窗口重新激活时把当前页透明度归位：串流中切回主窗口时，
+        // 之前被打断的淡入动画会让页面停在透明状态（看起来整页空白）。
+        Activated += (_, _) => NormalizeActivePageOpacity();
+
         // 单行卡片的两侧渐隐：滚动/改尺寸时重算每张卡的透明度
         AppScroll.ViewChanged += (_, _) => UpdateEdgeFade();
         AppScroll.SizeChanged += (_, _) => UpdateAppCardSize();
@@ -860,11 +864,41 @@ public sealed partial class MainWindow : Window
 
         _streamWindow = null;
 
+        LogDiag($"OnStreamWindowClosed: quitAfter={quitAfter} pending={_pendingOpen is not null} " +
+                $"computers.vis={ComputersPage.Visibility} settings.vis={SettingsHost.Visibility} " +
+                $"about.vis={AboutHost.Visibility} active={_activePage?.Name ?? "null"}");
+
         // 只有不是「换流重开」的时候才按设置退出
         if (quitAfter && _pendingOpen is null)
         {
             Application.Current.Exit();
+            return;
         }
+
+        // 回到主窗口：确保可见并激活，避免出现「空白窗口」
+        try
+        {
+            AppWindow.Show();
+            Activate();
+            LogDiag("main window shown+activated after stream close");
+        }
+        catch (Exception ex)
+        {
+            LogDiag($"main window show failed: {ex.Message}");
+        }
+
+        // 关闭串流后不主动切回主页：保留关闭前所在的页面（通常是主机详情页）。
+        // 只有当前页不可见时才回退到电脑页兜底。
+        if (_activePage is not { } current || current.Visibility != Visibility.Visible)
+        {
+            _currentHost = null;
+            HostPage.Visibility = Visibility.Collapsed;
+            SwitchPage(_activePage, ComputersPage);
+        }
+        LogDiag($"page kept: active={_activePage?.Name ?? "null"} " +
+                $"computers.vis={ComputersPage.Visibility} host.vis={HostPage.Visibility} " +
+                $"settings.vis={SettingsHost.Visibility} about.vis={AboutHost.Visibility}");
+        NormalizeActivePageOpacity();
     }
 
     private void OnStreamWindowClosedThenReopen(object? sender, WindowEventArgs args)
@@ -1781,7 +1815,6 @@ public sealed partial class MainWindow : Window
         ElementCompositionPreview.SetIsTranslationEnabled(page, true);
         visual.Properties.InsertVector3("Translation", new Vector3(0f, 24f, 0f));
         visual.Opacity = 0f;
-
         // 微软商店那种缓动：起步快、收尾柔
         var easing = compositor.CreateCubicBezierEasingFunction(
             new Vector2(0.1f, 0.9f),
@@ -1795,8 +1828,48 @@ public sealed partial class MainWindow : Window
         slide.InsertKeyFrame(1f, Vector3.Zero, easing);
         slide.Duration = TimeSpan.FromMilliseconds(300);
 
+        // 兜底：窗口不活跃时 Composition 动画可能被暂停，Opacity 会停在 0（看起来空白）。
+        // 动画完成后强制归位。
+        var batch = compositor.CreateScopedBatch(CompositionBatchTypes.Animation);
         visual.StartAnimation("Opacity", fade);
         visual.StartAnimation("Translation", slide);
+        batch.End();
+        batch.Completed += (_, _) =>
+        {
+            visual.StopAnimation("Opacity");
+            visual.Opacity = 1f;
+            visual.Properties.InsertVector3("Translation", Vector3.Zero);
+        };
+    }
+
+    /// <summary>窗口激活时把当前页透明度归位（防止动画被打断后页面透明）。</summary>
+    private void NormalizeActivePageOpacity()
+    {
+        try
+        {
+            // 开屏遮罩如果因为动画被中断没来得及收起，会整窗盖住所有内容
+            if (SplashOverlay.Visibility == Visibility.Visible)
+            {
+                SplashOverlay.Visibility = Visibility.Collapsed;
+                LogDiag("splash overlay force-collapsed");
+            }
+
+            if (_activePage is { } page && page.Visibility == Visibility.Visible)
+            {
+                var visual = ElementCompositionPreview.GetElementVisual(page);
+                visual.StopAnimation("Opacity");
+                visual.Opacity = 1f;
+                visual.Properties.InsertVector3("Translation", Vector3.Zero);
+                LogDiag($"NormalizeActivePageOpacity: {page.Name} opacity=1 " +
+                        $"root={RootGrid.ActualWidth:F0}x{RootGrid.ActualHeight:F0} " +
+                        $"nav.vis={Nav.Visibility} splash.vis={SplashOverlay.Visibility} " +
+                        $"devices={DeviceList.Items.Count}");
+            }
+        }
+        catch (Exception ex)
+        {
+            LogDiag($"NormalizeActivePageOpacity failed: {ex.Message}");
+        }
     }
 
     /// <summary>出页：快速淡出后隐藏（和进页的滑动叠在一起，像商店的页面切换）。</summary>
@@ -1837,6 +1910,22 @@ public sealed partial class MainWindow : Window
     }
 
     /// <summary>切页：旧页淡出、新页淡入上滑。</summary>
+    /// <summary>诊断日志：写到 %LOCALAPPDATA%\MoonlightForPC\app.log（安装目录可能不可写）。</summary>
+    private static void LogDiag(string message)
+    {
+        try
+        {
+            var dir = System.IO.Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "MoonlightForPC");
+            System.IO.Directory.CreateDirectory(dir);
+            System.IO.File.AppendAllText(
+                System.IO.Path.Combine(dir, "app.log"),
+                $"{DateTime.Now:HH:mm:ss.fff} {message}{Environment.NewLine}");
+        }
+        catch { }
+    }
+
     private void SwitchPage(FrameworkElement? outgoing, FrameworkElement incoming)
     {
         if (outgoing is not null && !ReferenceEquals(outgoing, incoming))
@@ -1845,6 +1934,8 @@ public sealed partial class MainWindow : Window
         }
 
         _activePage = incoming;
+        LogDiag($"SwitchPage: incoming={incoming.Name} computers.vis={ComputersPage.Visibility} " +
+                $"settings.vis={SettingsHost.Visibility} about.vis={AboutHost.Visibility}");
         // 刷新按钮只在「电脑」页显示（它挂在内容容器上，位置贴右上角）
         RefreshHostsPanel.Visibility = ReferenceEquals(incoming, ComputersPage) ? Visibility.Visible : Visibility.Collapsed;
         incoming.Visibility = Visibility.Visible;
@@ -1907,138 +1998,70 @@ public sealed partial class MainWindow : Window
             };
         }
     }
-    // ---------------- 主机显示缩放（Sunshine 扩展：/display-scale*） ----------------
+    // ---------------- 显示缩放（Sunshine 扩展：/display-scale*） ----------------
 
-    private string? _scaleHost;
-    private DisplayScaleInfo? _scaleInfo;
     private bool _scaleApplying;
+    private static readonly int[] ScalePercents = { 100, 125, 150, 175, 200, 225, 250 };
 
-    /// <summary>设置页打开时刷新主机下拉，并读取第一台主机的缩放档位。</summary>
+    /// <summary>设置页打开时准备缩放档位（对所有已配对电脑统一生效）。</summary>
     private void RefreshScaleHosts()
     {
-        var previous = (ScaleHostBox.SelectedItem as ComboBoxItem)?.Tag as string;
-
-        ScaleHostBox.SelectionChanged -= ScaleHostBox_SelectionChanged;
-        ScaleHostBox.Items.Clear();
-        foreach (var host in _hosts)
-        {
-            ScaleHostBox.Items.Add(new ComboBoxItem { Content = host.DisplayName, Tag = host.Address });
-        }
-        ScaleHostBox.SelectionChanged += ScaleHostBox_SelectionChanged;
-
-        if (ScaleHostBox.Items.Count == 0)
-        {
-            HostScaleBox.Items.Clear();
-            HostScaleBox.IsEnabled = false;
-            HostScaleHint.Text = "还没有已配对的电脑，先在「配对电脑」里添加一台。";
-            return;
-        }
-
-        var index = 0;
-        if (!string.IsNullOrEmpty(previous))
-        {
-            for (var i = 0; i < ScaleHostBox.Items.Count; i++)
-            {
-                if (ScaleHostBox.Items[i] is ComboBoxItem item && (string?)item.Tag == previous)
-                {
-                    index = i;
-                    break;
-                }
-            }
-        }
-
-        ScaleHostBox.SelectedIndex = index;   // 触发读取
-    }
-
-    private async void ScaleHostBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
-    {
-        if (!_settingsReady) { return; }
-
-        var host = (ScaleHostBox.SelectedItem as ComboBoxItem)?.Tag as string;
-        if (string.IsNullOrWhiteSpace(host)) { return; }
-
-        _scaleHost = host;
-        _scaleInfo = null;
-        HostScaleBox.Items.Clear();
-        HostScaleBox.IsEnabled = false;
-        HostScaleRing.IsActive = true;
-        HostScaleHint.Text = $"正在读取 {host} 的显示缩放…";
-
-        var info = await System.Threading.Tasks.Task.Run(() => HostApi.GetDisplayScale(host));
-
-        HostScaleRing.IsActive = false;
-        _scaleInfo = info;
-
-        if (info is null)
-        {
-            HostScaleHint.Text = "读取失败：主机离线、未配对，或该主机不支持显示缩放接口。";
-            return;
-        }
-
-        if (!info.IsAvailable)
-        {
-            var current = info.CurrentScalePercent is int value ? $"{value}%" : "未知";
-            HostScaleHint.Text = $"主机不支持通过接口调整缩放（当前 {current}）。";
-            return;
-        }
-
         _scaleApplying = true;
-        foreach (var percent in info.SupportedScalePercents)
+        var keep = (HostScaleBox.SelectedItem as ComboBoxItem)?.Tag as int? ?? 100;
+        HostScaleBox.Items.Clear();
+        foreach (var percent in ScalePercents)
         {
             HostScaleBox.Items.Add(new ComboBoxItem { Content = $"{percent}%", Tag = percent });
         }
-
-        for (var i = 0; i < HostScaleBox.Items.Count; i++)
-        {
-            if (HostScaleBox.Items[i] is ComboBoxItem item && item.Tag is int percent &&
-                percent == info.CurrentScalePercent)
-            {
-                HostScaleBox.SelectedIndex = i;
-                break;
-            }
-        }
+        var index = Array.IndexOf(ScalePercents, keep);
+        HostScaleBox.SelectedIndex = index >= 0 ? index : 0;
         _scaleApplying = false;
 
-        HostScaleBox.IsEnabled = true;
-        HostScaleHint.Text = $"当前 {info.CurrentScalePercent ?? 0}% · {info.FriendlyName}（{info.DisplayName}）";
+        HostScaleBox.IsEnabled = _hosts.Count > 0;
+        HostScaleHint.Text = _hosts.Count == 0
+            ? "还没有已配对的电脑，先在「配对电脑」里添加一台。"
+            : $"对所有已配对的 {_hosts.Count} 台电脑生效（主机需支持显示缩放接口）。";
     }
 
     private async void HostScaleBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (!_settingsReady || _scaleApplying || _scaleInfo is null || string.IsNullOrWhiteSpace(_scaleHost))
+        if (!_settingsReady || _scaleApplying) { return; }
+        if ((HostScaleBox.SelectedItem as ComboBoxItem)?.Tag is not int percent) { return; }
+
+        var hosts = _hosts.ToList();
+        if (hosts.Count == 0)
         {
+            HostScaleHint.Text = "没有已配对的电脑。";
             return;
         }
 
-        if ((HostScaleBox.SelectedItem as ComboBoxItem)?.Tag is not int percent) { return; }
-        if (percent == _scaleInfo.CurrentScalePercent) { return; }
-
-        var host = _scaleHost;
-        var displayName = _scaleInfo.DisplayName;
-        var deviceId = _scaleInfo.DeviceId;
-
+        _scaleApplying = true;
         HostScaleRing.IsActive = true;
-        HostScaleHint.Text = $"正在把 {host} 的显示缩放设置为 {percent}%…";
+        HostScaleHint.Text = $"正在把 {hosts.Count} 台电脑的显示缩放设置为 {percent}%…";
 
-        var result = await System.Threading.Tasks.Task.Run(
-            () => HostApi.SetDisplayScale(host, percent, displayName, deviceId));
+        var ok = 0;
+        var failed = new List<string>();
+        foreach (var host in hosts)
+        {
+            var result = await System.Threading.Tasks.Task.Run(
+                () => HostApi.SetDisplayScale(host.Address, percent));
+
+            if (result is not null && result.Success)
+            {
+                ok++;
+            }
+            else
+            {
+                failed.Add(host.DisplayName);
+            }
+        }
 
         HostScaleRing.IsActive = false;
+        _scaleApplying = false;
 
-        if (result is null || !result.Success)
-        {
-            HostScaleHint.Text = "设置失败：" + (result?.StatusMessage ?? "主机无响应");
-            return;
-        }
-
-        var now = result.CurrentScalePercent ?? percent;
-        HostScaleHint.Text = result.RestartRequired
-            ? $"已接受 {percent}%，主机需要重启显示后才生效。"
-            : result.EffectiveImmediately
-                ? $"已设置为 {now}%（立即生效）"
-                : $"主机已接受 {percent}%，稍后生效。";
-
-        _scaleInfo = _scaleInfo with { CurrentScalePercent = now };
+        HostScaleHint.Text = failed.Count == 0
+            ? $"已把 {ok} 台电脑的显示缩放设置为 {percent}%。"
+            : $"已设置 {ok} 台；失败 {failed.Count} 台（{string.Join("、", failed)}，可能离线或未配对）。";
     }
 
     /// <summary>应用卡片大小跟着整页高度走（两行排列，保持 170:240 封面比例）。</summary>

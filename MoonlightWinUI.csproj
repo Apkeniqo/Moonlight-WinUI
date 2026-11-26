@@ -45,6 +45,16 @@
     <None Remove="tools\**" />
   </ItemGroup>
 
+  <!-- dist/ 是打包产物目录：绝不能作为资源复制进输出，否则会 dist→bin→dist 递归膨胀 -->
+  <ItemGroup>
+    <Compile Remove="dist\**" />
+    <Content Remove="dist\**" />
+    <None Remove="dist\**" />
+    <Page Remove="dist\**" />
+    <PRIResource Remove="dist\**" />
+    <EmbeddedResource Remove="dist\**" />
+  </ItemGroup>
+
   <!-- 窗口/任务栏图标：原版 moonlight.ico，复制到输出目录供 AppWindow.SetIcon 使用 -->
   <ItemGroup>
     <Content Include="tools\assets\app.ico" Link="app.ico">
