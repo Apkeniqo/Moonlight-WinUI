@@ -49,6 +49,12 @@
             <Grid Padding="24">
                 <!-- ================= 设备页 ================= -->
                 <Grid x:Name="ComputersPage">
+
+                    <Grid.Transitions>
+                        <TransitionCollection>
+                            <EntranceThemeTransition FromVerticalOffset="24" IsStaggeringEnabled="False" />
+                        </TransitionCollection>
+                    </Grid.Transitions>
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="*" />
@@ -163,6 +169,12 @@
                               VerticalScrollBarVisibility="Auto"
                               HorizontalScrollBarVisibility="Disabled"
                               HorizontalScrollMode="Disabled">
+
+                    <ScrollViewer.Transitions>
+                        <TransitionCollection>
+                            <EntranceThemeTransition FromVerticalOffset="24" IsStaggeringEnabled="False" />
+                        </TransitionCollection>
+                    </ScrollViewer.Transitions>
                     <StackPanel x:Name="SettingsPage" Spacing="16">
                     <StackPanel Spacing="4">
                         <TextBlock Text="串流设置" FontSize="20" FontWeight="SemiBold" />
@@ -339,6 +351,12 @@
                               VerticalScrollBarVisibility="Auto"
                               HorizontalScrollBarVisibility="Disabled"
                               HorizontalScrollMode="Disabled">
+
+                    <ScrollViewer.Transitions>
+                        <TransitionCollection>
+                            <EntranceThemeTransition FromVerticalOffset="24" IsStaggeringEnabled="False" />
+                        </TransitionCollection>
+                    </ScrollViewer.Transitions>
                     <StackPanel Spacing="16">
                         <StackPanel Spacing="4">
                             <TextBlock Text="关于" FontSize="28" FontWeight="SemiBold" />

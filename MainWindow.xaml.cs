@@ -533,25 +533,34 @@ public sealed partial class MainWindow : Window
     }
     private async Task LoadAppsAsync(string host, int httpsPort = 47984)
     {
+        // 记录旧内容：读取失败或中途离开时要恢复，否则页面会变成空白列表
+        var previous = AppList.ItemsSource;
+
         HostLoading.IsActive = true;
         HostMessage.Text = "正在读取应用列表…";
         HostStatus.Text = string.Empty;
-        AppList.ItemsSource = null;
 
         var result = await Task.Run(() => HostApi.GetAppList(host, httpsPort));
         _lastAppLoadTick = Environment.TickCount64;
 
-        // 等的时候用户可能已经返回或换了主机
+        LogDiag($"LoadApps: host={host} success={result.Success} apps={result.Apps.Count} hostVisible={HostPage.Visibility}");
+
+        // 等的时候用户可能已经返回或换了主机：别把列表清空留在界面上
         if (!string.Equals(_currentHost, host, StringComparison.OrdinalIgnoreCase) ||
             HostPage.Visibility != Visibility.Visible)
         {
+            HostLoading.IsActive = false;
+            if (previous is not null && AppList.ItemsSource is null)
+            {
+                AppList.ItemsSource = previous;
+            }
             return;
         }
 
         HostLoading.IsActive = false;
         HostMessage.Text = result.Success ? string.Empty : result.Message;
         HostStatus.Text = result.Success ? result.Message : "读取失败";
-        AppList.ItemsSource = result.Apps;
+        AppList.ItemsSource = result.Success ? result.Apps : previous;
         _cardRowsRetries = 0;
         ApplyAppCardRows();
         UpdateAppCardSize();
@@ -1802,6 +1811,10 @@ public sealed partial class MainWindow : Window
     // ---------------- 导航 ----------------
 
     /// <summary>切页时的过渡：淡入 + 从下方 16px 上滑（Composition，无布局开销）。</summary>
+    /// <summary>
+    /// 进页：复刻 Windows 官方「页面刷新」过渡（上滑 30px + 淡入，250ms，
+    /// cubic-bezier(0.1,0.9,0.2,1)）。先等一帧让布局完成再启动动画，避免首帧卡顿。
+    /// </summary>
     private void AnimatePageIn(FrameworkElement page)
     {
         if (page is null)
@@ -1809,37 +1822,48 @@ public sealed partial class MainWindow : Window
             return;
         }
 
-        var visual = ElementCompositionPreview.GetElementVisual(page);
-        var compositor = visual.Compositor;
-
-        ElementCompositionPreview.SetIsTranslationEnabled(page, true);
-        visual.Properties.InsertVector3("Translation", new Vector3(0f, 24f, 0f));
-        visual.Opacity = 0f;
-        // 微软商店那种缓动：起步快、收尾柔
-        var easing = compositor.CreateCubicBezierEasingFunction(
-            new Vector2(0.1f, 0.9f),
-            new Vector2(0.2f, 1f));
-
-        var fade = compositor.CreateScalarKeyFrameAnimation();
-        fade.InsertKeyFrame(1f, 1f, easing);
-        fade.Duration = TimeSpan.FromMilliseconds(220);
-
-        var slide = compositor.CreateVector3KeyFrameAnimation();
-        slide.InsertKeyFrame(1f, Vector3.Zero, easing);
-        slide.Duration = TimeSpan.FromMilliseconds(300);
-
-        // 兜底：窗口不活跃时 Composition 动画可能被暂停，Opacity 会停在 0（看起来空白）。
-        // 动画完成后强制归位。
-        var batch = compositor.CreateScopedBatch(CompositionBatchTypes.Animation);
-        visual.StartAnimation("Opacity", fade);
-        visual.StartAnimation("Translation", slide);
-        batch.End();
-        batch.Completed += (_, _) =>
+        try
         {
+            var visual = ElementCompositionPreview.GetElementVisual(page);
+            var compositor = visual.Compositor;
+
+            ElementCompositionPreview.SetIsTranslationEnabled(page, true);
             visual.StopAnimation("Opacity");
-            visual.Opacity = 1f;
-            visual.Properties.InsertVector3("Translation", Vector3.Zero);
-        };
+            visual.StopAnimation("Translation");
+            visual.Opacity = 0.5f;
+            visual.Properties.InsertVector3("Translation", new Vector3(0f, 30f, 0f));
+
+            // 布局完成后再启动动画：元素刚变 Visible 时立即动画会掉帧
+            DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
+            {
+                try
+                {
+                    var easing = compositor.CreateCubicBezierEasingFunction(
+                        new Vector2(0.1f, 0.9f),
+                        new Vector2(0.2f, 1f));
+
+                    var slide = compositor.CreateVector3KeyFrameAnimation();
+                    slide.InsertKeyFrame(1f, Vector3.Zero, easing);
+                    slide.Duration = TimeSpan.FromMilliseconds(250);
+
+                    var fade = compositor.CreateScalarKeyFrameAnimation();
+                    fade.InsertKeyFrame(1f, 1f, easing);
+                    fade.Duration = TimeSpan.FromMilliseconds(250);
+
+                    visual.StartAnimation("Translation", slide);
+                    visual.StartAnimation("Opacity", fade);
+                }
+                catch (Exception ex)
+                {
+                    visual.Opacity = 1f;
+                    LogDiag($"AnimatePageIn(start) failed: {ex.Message}");
+                }
+            });
+        }
+        catch (Exception ex)
+        {
+            LogDiag($"AnimatePageIn failed: {ex.Message}");
+        }
     }
 
     /// <summary>窗口激活时把当前页透明度归位（防止动画被打断后页面透明）。</summary>
@@ -1872,7 +1896,7 @@ public sealed partial class MainWindow : Window
         }
     }
 
-    /// <summary>出页：快速淡出后隐藏（和进页的滑动叠在一起，像商店的页面切换）。</summary>
+    /// <summary>出页：下滑位移后隐藏（不做透明度动画，避免和进页互相打架）。</summary>
     private void AnimatePageOut(FrameworkElement page)
     {
         if (page is null || page.Visibility != Visibility.Visible)
@@ -1880,33 +1904,36 @@ public sealed partial class MainWindow : Window
             return;
         }
 
-        var visual = ElementCompositionPreview.GetElementVisual(page);
-        var compositor = visual.Compositor;
-
-        ElementCompositionPreview.SetIsTranslationEnabled(page, true);
-        var fade = compositor.CreateScalarKeyFrameAnimation();
-        fade.InsertKeyFrame(1f, 0f);
-        fade.Duration = TimeSpan.FromMilliseconds(120);
-
-        var slide = compositor.CreateVector3KeyFrameAnimation();
-        slide.InsertKeyFrame(1f, new Vector3(0f, -12f, 0f));
-        slide.Duration = TimeSpan.FromMilliseconds(120);
-
-        var batch = compositor.CreateScopedBatch(CompositionBatchTypes.Animation);
-        visual.StartAnimation("Opacity", fade);
-        visual.StartAnimation("Translation", slide);
-        batch.End();
-        batch.Completed += (_, _) =>
+        try
         {
-            if (ReferenceEquals(page, _activePage))
-            {
-                return;   // 又切回来了：别把当前页隐藏掉
-            }
+            var visual = ElementCompositionPreview.GetElementVisual(page);
+            var compositor = visual.Compositor;
 
-            page.Visibility = Visibility.Collapsed;
-            visual.Opacity = 1f;
-            visual.Properties.InsertVector3("Translation", Vector3.Zero);
-        };
+            ElementCompositionPreview.SetIsTranslationEnabled(page, true);
+            var slide = compositor.CreateVector3KeyFrameAnimation();
+            slide.InsertKeyFrame(1f, new Vector3(0f, -12f, 0f));
+            slide.Duration = TimeSpan.FromMilliseconds(120);
+
+            var batch = compositor.CreateScopedBatch(CompositionBatchTypes.Animation);
+            visual.StartAnimation("Translation", slide);
+            batch.End();
+            batch.Completed += (_, _) =>
+            {
+                if (ReferenceEquals(page, _activePage) || page.Visibility != Visibility.Visible)
+                {
+                    return;
+                }
+
+                page.Visibility = Visibility.Collapsed;
+                visual.Properties.InsertVector3("Translation", Vector3.Zero);
+                visual.StopAnimation("Opacity");
+                visual.Opacity = 1f;
+            };
+        }
+        catch (Exception ex)
+        {
+            LogDiag($"AnimatePageOut failed: {ex.Message}");
+        }
     }
 
     /// <summary>切页：旧页淡出、新页淡入上滑。</summary>
@@ -1928,9 +1955,10 @@ public sealed partial class MainWindow : Window
 
     private void SwitchPage(FrameworkElement? outgoing, FrameworkElement incoming)
     {
+        // 出页立即隐藏：两页不会重叠；入场动画交给 XAML 的 EntranceThemeTransition
         if (outgoing is not null && !ReferenceEquals(outgoing, incoming))
         {
-            AnimatePageOut(outgoing);
+            outgoing.Visibility = Visibility.Collapsed;
         }
 
         _activePage = incoming;
@@ -1968,13 +1996,22 @@ public sealed partial class MainWindow : Window
                             : showAbout ? (FrameworkElement)AboutHost
                             : ComputersPage;
 
+            var switched = false;
             foreach (var page in new FrameworkElement[] { ComputersPage, SettingsHost, AboutHost })
             {
                 if (!ReferenceEquals(page, incomingPage) && page.Visibility == Visibility.Visible)
                 {
                     SwitchPage(page, incomingPage);
+                    switched = true;
                     break;
                 }
+            }
+
+            // 没有任何标准页可见时（例如刚退出串流、停在主机详情页），
+            // 也必须显式显示目标页，否则界面会空白
+            if (!switched)
+            {
+                SwitchPage(null, incomingPage);
             }
 
             // 进设置页时刷新「主机显示缩放」的主机列表
