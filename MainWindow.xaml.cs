@@ -1079,6 +1079,9 @@ public sealed partial class MainWindow : Window
         }
 
         PersistSettings($"{_settings.Width}×{_settings.Height}");
+
+        // 立刻生效：串流中直接把新分辨率/码率/全屏推给当前会话
+        _streamWindow?.ApplyStreamSettings(_settings.Width, _settings.Height, _settings.BitrateKbps, _settings.FullScreen);
     }
 
     private void FpsBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -1114,6 +1117,7 @@ public sealed partial class MainWindow : Window
         _settings.BitrateKbps = (int)Math.Round(e.NewValue) * 1000;
         UpdateBitrateText();
         PersistSettings($"{_settings.BitrateKbps / 1000.0:F0} Mbps");
+        _streamWindow?.ApplyStreamSettings(_settings.Width, _settings.Height, _settings.BitrateKbps, _settings.FullScreen);
     }
 
     private void AutoLockSwitch_Toggled(object sender, RoutedEventArgs e)
@@ -1220,6 +1224,7 @@ public sealed partial class MainWindow : Window
 
         _settings.FullScreen = WindowModeBox.SelectedIndex == 1;
         PersistSettings(WindowModeBox.SelectedIndex == 1 ? "窗口模式：全屏" : "窗口模式：窗口");
+        _streamWindow?.ApplyStreamSettings(_settings.Width, _settings.Height, _settings.BitrateKbps, _settings.FullScreen);
     }
 
     private void SwapMouseSwitch_Toggled(object sender, RoutedEventArgs e)
@@ -1407,22 +1412,6 @@ public sealed partial class MainWindow : Window
     }
 
     /// <summary>保存后如果正开着串流，关掉它并用新参数重开（参数只在建连时读取）。</summary>
-    private void ApplyAndReconnect_Click(object sender, RoutedEventArgs e)
-    {
-        _settings.Save();
-
-        if (_streamWindow is { } window)
-        {
-            _pendingOpen = (window.Host, window.IsDemo, window.AppId, window.AppTitle);
-            window.Closed += OnStreamWindowClosedThenReopen;
-            window.Close();
-            SettingsStatusText.Text = "已保存，正在用新参数重连…";
-            return;
-        }
-
-        SettingsStatusText.Text = "已保存，下次连接生效";
-    }
-
     // ---------------- 配对（/pair，Sunshine 兼容） ----------------
 
     /// <summary>右上角「配对电脑」：弹出模态对话框（主界面此时不可操作），填 IP/端口后开始配对。</summary>
@@ -1644,9 +1633,6 @@ public sealed partial class MainWindow : Window
     private void AppRowsBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         if (!_settingsReady || RootGrid is null) { return; }
-        {
-            return;
-        }
 
         _cardRowsRetries = 0;
         var rows = AppRowsBox.SelectedIndex == 0 ? 1 : 2;
