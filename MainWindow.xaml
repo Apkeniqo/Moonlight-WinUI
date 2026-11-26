@@ -45,16 +45,41 @@
                             <TextBlock Text="选择一台已配对的电脑开始串流" FontSize="12" Opacity="0.6" />
                         </StackPanel>
                     </Grid>
-                    <!-- 电脑卡片：左侧偏上，横向排列 -->
-                    <ItemsControl x:Name="DeviceList" Grid.Row="1" HorizontalContentAlignment="Stretch"
-                                  HorizontalAlignment="Stretch" VerticalAlignment="Top"
-                                  Margin="0,56,0,0">
-                        <ItemsControl.ItemsPanel>
-                            <ItemsPanelTemplate>
-                                <local:AdaptiveWrapPanel ItemWidth="300" MaxPanelWidth="0" Spacing="10" />
-                            </ItemsPanelTemplate>
-                        </ItemsControl.ItemsPanel>
-                    </ItemsControl>
+                    <!-- 电脑卡片：LinedFlowLayout 流式换行 + WinUI 3 官方过渡动画 -->
+                    <ScrollViewer x:Name="DeviceScroll" Grid.Row="1" Margin="0,56,0,0"
+                                  VerticalScrollBarVisibility="Auto"
+                                  HorizontalScrollBarVisibility="Disabled">
+                        <ItemsRepeater x:Name="DeviceList" ElementPrepared="DeviceList_ElementPrepared">
+                            <!-- LinedFlowLayout 自带过渡动画：条目增删和"视图尺寸变化"（拖动窗口换行）都会播放 -->
+                            <ItemsRepeater.Layout>
+                                <LinedFlowLayout ItemsStretch="None" LineHeight="96"
+                                                 LineSpacing="10" MinItemSpacing="10" />
+                            </ItemsRepeater.Layout>
+                            <ItemsRepeater.ItemTemplate>
+                                <DataTemplate x:DataType="local:HostEntry">
+                                    <Grid Width="300" Margin="0,0,10,10">
+                                        <Border Height="96" Padding="16" CornerRadius="8" BorderThickness="1"
+                                                Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                                                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}">
+                                            <StackPanel Orientation="Horizontal">
+                                                <Border Width="56" Height="56" CornerRadius="12" Background="#3A3A3A"
+                                                        VerticalAlignment="Center">
+                                                    <FontIcon Glyph="&#xE7F4;" FontSize="26" Foreground="White"
+                                                              HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                                </Border>
+                                                <StackPanel Spacing="4" Margin="16,0,0,0" VerticalAlignment="Center">
+                                                    <TextBlock Text="{x:Bind DisplayName}" FontSize="15"
+                                                               FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                                                    <TextBlock Text="{x:Bind StatusText, Mode=OneWay}" FontSize="12"
+                                                               Opacity="0.65" TextTrimming="CharacterEllipsis" />
+                                                </StackPanel>
+                                            </StackPanel>
+                                        </Border>
+                                    </Grid>
+                                </DataTemplate>
+                            </ItemsRepeater.ItemTemplate>
+                        </ItemsRepeater>
+                    </ScrollViewer>
                 </Grid>
 
                 <!-- ================= 主机详情页（点设备卡片进来） ================= -->

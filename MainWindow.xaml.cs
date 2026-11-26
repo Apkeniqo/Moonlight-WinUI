@@ -34,7 +34,6 @@ public sealed partial class MainWindow : Window
     private int _currentHostPort = 47984;
     private string? _lastNavTag;
     private List<HostEntry> _hosts = new();
-    private readonly Dictionary<string, TextBlock> _statusLabels = new(StringComparer.OrdinalIgnoreCase);
     private readonly StreamSettings _settings = StreamSettings.Load();
 
     /// <summary>主窗口实例（串流窗口要在这里弹错误提示）。</summary>
@@ -70,11 +69,6 @@ public sealed partial class MainWindow : Window
         // 单行卡片的两侧渐隐：滚动/改尺寸时重算每张卡的透明度
         AppScroll.ViewChanged += (_, _) => UpdateEdgeFade();
         AppScroll.SizeChanged += (_, _) => UpdateAppCardSize();
-        // 诊断：记录设备卡片在尺寸变化 / 每次布局后的真实位置（200ms 节流）
-        DeviceList.SizeChanged += (_, _) => LogCardLayout("sizeChanged");
-        DeviceList.LayoutUpdated += (_, _) => LogCardLayout("layoutUpdated");
-        // 设备卡片重排动画：窗口尺寸变化后让卡片"滑"到新位置
-        DeviceList.SizeChanged += (_, _) => AnimateHostCards();
         HostPage.SizeChanged += (_, _) => UpdateAppCardSize();
         AppScroll.SizeChanged += (_, _) => UpdateEdgeFade();
 
@@ -155,96 +149,24 @@ public sealed partial class MainWindow : Window
     private void BuildDeviceCards()
     {
         _hosts = HostStore.Load();
-        DeviceList.Items.Clear();
-        _statusLabels.Clear();
-
-        foreach (var host in _hosts)
-        {
-            var card = BuildCard(host, "检测中…", out var statusText);
-            DeviceList.Items.Add(card);
-            _statusLabels[host.Address] = statusText;
-        }
-
+        DeviceList.ItemsSource = null;
+        DeviceList.ItemsSource = _hosts;   // 数据绑定，卡片由 DataTemplate 生成
         _ = RefreshHostStatusAsync();
-        AnimateHostCards();   // 先把每张卡片的位置记下来，窗口 resize 时才能算出位移
     }
 
-    /// <summary>设备卡片重排时缓存位置（key 是卡片元素本身）。</summary>
-    private readonly Dictionary<FrameworkElement, Windows.Foundation.Point> _hostCardPos = new();
-
-    private long _lastCardLayoutLog;
-
-    private void LogCardLayout(string where)
+    /// <summary>ItemsRepeater 生成卡片时挂上点击事件（Tag 带整条 HostEntry 记录）。</summary>
+    private void DeviceList_ElementPrepared(ItemsRepeater sender, ItemsRepeaterElementPreparedEventArgs args)
     {
-        var now = Environment.TickCount64;
-        if (now - _lastCardLayoutLog < 200)
+        if (args.Element is not FrameworkElement element || element.DataContext is not HostEntry host)
         {
             return;
         }
-        _lastCardLayoutLog = now;
 
-        try
-        {
-            var parts = new List<string>();
-            foreach (var card in DeviceList.Items.OfType<FrameworkElement>())
-            {
-                var pt = card.TransformToVisual(DeviceList)
-                    .TransformPoint(new Windows.Foundation.Point(0, 0));
-                parts.Add($"{pt.X:F0},{pt.Y:F0}");
-            }
-
-            System.IO.File.AppendAllText(
-                System.IO.Path.Combine(AppContext.BaseDirectory, "backdrop.log"),
-                $"{DateTime.Now:HH:mm:ss.fff} cards {where} list={DeviceList.ActualWidth:F0}x{DeviceList.ActualHeight:F0} [{string.Join("; ", parts)}]{Environment.NewLine}");
-        }
-        catch { }
-    }
-
-    /// <summary>
-    /// 窗口尺寸变化后设备卡片会重新换行：这里把每张卡片从"旧位置"滑到"新位置"，
-    /// 而不是瞬间跳过去。布局完成后再算（低优先级排队），避免读到半成品布局。
-    /// </summary>
-    private void AnimateHostCards()
-    {
-        DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
-        {
-            try
-            {
-                foreach (var card in DeviceList.Items.OfType<FrameworkElement>())
-                {
-                    var now = card.TransformToVisual(DeviceList)
-                        .TransformPoint(new Windows.Foundation.Point(0, 0));
-
-                    if (_hostCardPos.TryGetValue(card, out var old))
-                    {
-                        var dx = old.X - now.X;
-                        var dy = old.Y - now.Y;
-                        if (Math.Abs(dx) > 0.5 || Math.Abs(dy) > 0.5)
-                        {
-                            AnimateHostCardTo(card, dx, dy);
-                        }
-                    }
-
-                    _hostCardPos[card] = now;
-                }
-            }
-            catch
-            {
-                // 重排动画失败无所谓，别影响布局
-            }
-        });
-    }
-
-    private static void AnimateHostCardTo(FrameworkElement card, double dx, double dy)
-    {
-        var visual = ElementCompositionPreview.GetElementVisual(card);
-        var compositor = visual.Compositor;
-        var anim = compositor.CreateVector3KeyFrameAnimation();
-        anim.InsertKeyFrame(0f, new Vector3((float)dx, (float)dy, 0f));
-        anim.InsertKeyFrame(1f, Vector3.Zero);
-        anim.Duration = TimeSpan.FromMilliseconds(160);
-        anim.StopBehavior = AnimationStopBehavior.SetToFinalValue;
-        visual.StartAnimation("Translation", anim);
+        element.Tag = host;
+        element.Tapped -= DeviceCard_Tapped;
+        element.Tapped += DeviceCard_Tapped;
+        element.RightTapped -= DeviceCard_RightTapped;
+        element.RightTapped += DeviceCard_RightTapped;
     }
 
     /// <summary>电脑页的「刷新」按钮：重新探测所有主机的在线状态（探测期间转圈并禁用按钮）。</summary>
@@ -285,13 +207,8 @@ public sealed partial class MainWindow : Window
             for (var i = 0; i < snapshot.Count && i < results.Length; i++)
             {
                 var host = snapshot[i];
-                if (!_statusLabels.TryGetValue(host.Address, out var label))
-                {
-                    continue;
-                }
-
                 var online = results[i];
-                label.Text = online
+                host.StatusText = online
                     ? (string.Equals(host.DisplayName, host.Address, StringComparison.OrdinalIgnoreCase)
                         ? "在线"
                         : $"在线 · {host.Address}")
@@ -315,84 +232,6 @@ public sealed partial class MainWindow : Window
         }
     }
 
-    private FrameworkElement BuildCard(HostEntry host, string status, out TextBlock statusText)
-    {
-        var icon = new Border
-        {
-            Width = 56,
-            Height = 56,
-            CornerRadius = new CornerRadius(12),
-            // 统一灰色底（微软商店那种中性配色），靠图标本身区分
-            Background = new SolidColorBrush(Windows.UI.Color.FromArgb(255, 58, 58, 58)),
-            Child = new FontIcon
-            {
-                Glyph = "\uE7F4",     // 统一用 PC 图标，底色区分设备
-                FontSize = 26,
-                Foreground = new SolidColorBrush(Colors.White),
-                HorizontalAlignment = HorizontalAlignment.Center,
-                VerticalAlignment = VerticalAlignment.Center
-            }
-        };
-
-        statusText = new TextBlock
-        {
-            Text = status,
-            FontSize = 12,
-            Opacity = 0.65,
-            TextTrimming = TextTrimming.CharacterEllipsis,
-        };
-
-        var texts = new StackPanel
-        {
-            Spacing = 4,
-            Margin = new Thickness(16, 0, 0, 0),
-            VerticalAlignment = VerticalAlignment.Center
-        };
-        texts.Children.Add(new TextBlock
-        {
-            Text = host.DisplayName,
-            FontSize = 15,
-            FontWeight = FontWeights.SemiBold,
-            TextTrimming = TextTrimming.CharacterEllipsis,
-        });
-        texts.Children.Add(statusText);
-
-        var row = new StackPanel { Orientation = Orientation.Horizontal };
-        row.Children.Add(icon);
-        row.Children.Add(texts);
-
-        var card = new Border
-        {
-            Height = 96,
-            Padding = new Thickness(16),
-            CornerRadius = new CornerRadius(8),
-            BorderThickness = new Thickness(1),
-            Child = row
-        };
-        card.Background = (Brush)Application.Current.Resources["CardBackgroundFillColorDefaultBrush"];
-        card.BorderBrush = (Brush)Application.Current.Resources["CardStrokeColorDefaultBrush"];
-
-        // 整张卡片可点：进主机详情页，读 /applist（Tag 带整条记录，端口/显示名都在里面）
-        // slot 固定尺寸（卡片 ×1.05），卡片在里面整体缩放，命中层不缩放。
-        var slot = FluentCard.CreateSlot(card, DeviceList.Items.Count);
-        slot.Tag = host;
-        slot.Tapped += DeviceCard_Tapped;
-        slot.RightTapped += DeviceCard_RightTapped;
-        return slot;
-    }
-
-    private static string Letter(string name)
-    {
-        foreach (var ch in name)
-        {
-            if (char.IsLetterOrDigit(ch))
-            {
-                return char.ToUpperInvariant(ch).ToString();
-            }
-        }
-
-        return "?";
-    }
 
     private static Color LetterColor(string seed)
     {

@@ -8,8 +8,13 @@ using System.Text.Json.Serialization;
 namespace MoonlightWinUI;
 
 /// <summary>一台已配对的电脑。</summary>
-public sealed class HostEntry
+public sealed class HostEntry : System.ComponentModel.INotifyPropertyChanged
 {
+    public event System.ComponentModel.PropertyChangedEventHandler? PropertyChanged;
+
+    private void RaisePropertyChanged(string name)
+        => PropertyChanged?.Invoke(this, new System.ComponentModel.PropertyChangedEventArgs(name));
+
     /// <summary>连接用的地址（主机名或 IP），发请求都用它。</summary>
     public string Address { get; set; } = string.Empty;
 
@@ -21,6 +26,23 @@ public sealed class HostEntry
 
     [JsonIgnore]
     public string DisplayName => string.IsNullOrWhiteSpace(Name) ? Address : Name;
+
+    private string _statusText = "检测中…";
+
+    /// <summary>卡片上的在线状态文字（探测结果），绑定用。</summary>
+    [JsonIgnore]
+    public string StatusText
+    {
+        get => _statusText;
+        set
+        {
+            if (_statusText != value)
+            {
+                _statusText = value;
+                RaisePropertyChanged(nameof(StatusText));
+            }
+        }
+    }
 
     /// <summary>网卡 MAC（唤醒用），从 /serverinfo 里拿，可能为空。</summary>
     public string Mac { get; set; } = string.Empty;
