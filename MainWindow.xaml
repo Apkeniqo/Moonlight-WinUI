@@ -12,7 +12,10 @@
         </Grid.RowDefinitions>
 
         <Grid x:Name="AppTitleBar" Grid.Row="0" Height="48">
-            <TextBlock x:Name="TitleText" Text="Moonlight V+ for PC" VerticalAlignment="Center" Margin="12,0" />
+            <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Spacing="8" Margin="20,0">
+                <Image x:Name="TitleIcon" Width="20" Height="20" />
+                <TextBlock x:Name="TitleText" Text="Moonlight For PC" VerticalAlignment="Center" />
+            </StackPanel>
 
         </Grid>
 
@@ -341,7 +344,7 @@
                     <StackPanel Spacing="16">
                         <StackPanel Spacing="4">
                             <TextBlock Text="关于" FontSize="28" FontWeight="SemiBold" />
-                            <TextBlock Text="Moonlight V+ for PC" FontSize="13" Opacity="0.6" />
+                            <TextBlock Text="Moonlight For PC" FontSize="13" Opacity="0.6" />
                         </StackPanel>
                         <StackPanel Spacing="8">
                             <TextBlock x:Name="AboutVersionText" FontSize="13" TextWrapping="Wrap" />
@@ -369,5 +372,12 @@
                 </StackPanel>
             </Grid>
         </NavigationView>
-    </Grid>
+        <!-- 开屏过渡：全窗口深色遮罩 + 居中大图标，启动后淡出到主界面 -->
+        <Grid x:Name="SplashOverlay" Grid.RowSpan="2" Background="#FF0E1015"
+              IsHitTestVisible="False">
+            <Image x:Name="SplashIcon" Width="160" Height="160"
+                   HorizontalAlignment="Center" VerticalAlignment="Center" />
+        </Grid>
+
+</Grid>
 </Window>

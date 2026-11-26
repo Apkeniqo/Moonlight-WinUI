@@ -42,12 +42,8 @@ public static class HostStore
         WriteIndented = true,
     };
 
-    /// <summary>首次运行（没有 hosts.json）时给两台已知电脑，之后完全以文件为准。</summary>
-    private static List<HostEntry> Defaults() => new()
-    {
-        new HostEntry { Address = "DESKTOP-M9RGVD3", Name = "DESKTOP-M9RGVD3", Port = 47989 },
-        new HostEntry { Address = "LAPTOP-8BQF1SDN", Name = "LAPTOP-8BQF1SDN", Port = 47989 },
-    };
+    /// <summary>首次运行不再预置电脑，完全由用户配对/手动添加。</summary>
+    private static List<HostEntry> Defaults() => new();
 
     public static List<HostEntry> Load()
     {

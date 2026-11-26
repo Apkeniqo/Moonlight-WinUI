@@ -6,6 +6,7 @@
     <TargetPlatformMinVersion>10.0.17763.0</TargetPlatformMinVersion>
     <RootNamespace>MoonlightWinUI</RootNamespace>
     <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>tools\assets\app.ico</ApplicationIcon>
     <Platforms>x64</Platforms>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
     <UseWinUI>true</UseWinUI>
@@ -22,6 +23,8 @@
     <VersionFile>$(MSBuildProjectDirectory)\VERSION</VersionFile>
     <Version Condition="Exists('$(VersionFile)')">$([System.IO.File]::ReadAllText('$(VersionFile)').Trim())</Version>
     <Version Condition="'$(Version)' == ''">0.0.0</Version>
+    <!-- 不把 git commit 塞进 ProductVersion，否则任务栏/属性里会显示 1.1.5+<hash> -->
+    <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
   </PropertyGroup>
 
   <ItemGroup>
@@ -34,6 +37,22 @@
   <ItemGroup>
     <None Include="SDL2.dll" Condition="Exists('SDL2.dll')" CopyToOutputDirectory="PreserveNewest" />
     <None Include="SDL3.dll" Condition="Exists('SDL3.dll')" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <!-- tools/ 下是安装器等独立工具，不参与本应用编译 -->
+  <ItemGroup>
+    <Compile Remove="tools\**" />
+    <None Remove="tools\**" />
+  </ItemGroup>
+
+  <!-- 窗口/任务栏图标：原版 moonlight.ico，复制到输出目录供 AppWindow.SetIcon 使用 -->
+  <ItemGroup>
+    <Content Include="tools\assets\app.ico" Link="app.ico">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="tools\assets\app.png" Link="app.png">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
   </ItemGroup>
 
   <!-- 原生解码/上屏 DLL + FFmpeg 运行时 + 测试片源 -->

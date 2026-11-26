@@ -50,8 +50,8 @@ public sealed partial class MainWindow : Window
         Instance = this;
         InitializeComponent();
 
-        Title = $"Moonlight V+ for PC  v{AppVersion.Current}";
-        TitleText.Text = "Moonlight V+ for PC";
+        Title = "Moonlight For PC";
+        TitleText.Text = "Moonlight For PC";
 
         // WinUI 3 的关键能力：内容延伸进标题栏，但最小化/最大化/关闭仍由系统绘制
         ExtendsContentIntoTitleBar = true;
@@ -65,6 +65,38 @@ public sealed partial class MainWindow : Window
                 $"{DateTime.Now:HH:mm:ss.fff} ===== 启动 v{AppVersion.Current} ====={Environment.NewLine}");
         }
         catch { }
+        try
+        {
+            var pngPath = System.IO.Path.Combine(AppContext.BaseDirectory, "app.png");
+            if (System.IO.File.Exists(pngPath))
+            {
+                var splashSource = new Microsoft.UI.Xaml.Media.Imaging.BitmapImage(new Uri(pngPath));
+                TitleIcon.Source = splashSource;
+                SplashIcon.Source = splashSource;
+
+                RootGrid.Loaded += async (_, _) =>
+                {
+                    await Task.Delay(700);
+                    var fade = new Microsoft.UI.Xaml.Media.Animation.DoubleAnimation
+                    {
+                        To = 0,
+                        Duration = new Duration(TimeSpan.FromMilliseconds(380)),
+                    };
+                    Microsoft.UI.Xaml.Media.Animation.Storyboard.SetTarget(fade, SplashOverlay);
+                    Microsoft.UI.Xaml.Media.Animation.Storyboard.SetTargetProperty(fade, "Opacity");
+                    var sb = new Microsoft.UI.Xaml.Media.Animation.Storyboard();
+                    sb.Children.Add(fade);
+                    sb.Completed += (_, _) => SplashOverlay.Visibility = Visibility.Collapsed;
+                    sb.Begin();
+                };
+            }
+            else
+            {
+                SplashOverlay.Visibility = Visibility.Collapsed;
+            }
+        }
+        catch { SplashOverlay.Visibility = Visibility.Collapsed; }
+
         RootGrid.Loaded += (_, _) => ApplyBackdrop(_settings.BackdropKind);   // 按设置恢复，别写死 Mica
 
         // 单行卡片的两侧渐隐：滚动/改尺寸时重算每张卡的透明度
@@ -72,6 +104,17 @@ public sealed partial class MainWindow : Window
         AppScroll.SizeChanged += (_, _) => UpdateAppCardSize();
         HostPage.SizeChanged += (_, _) => UpdateAppCardSize();
         AppScroll.SizeChanged += (_, _) => UpdateEdgeFade();
+
+        // 任务栏/窗口图标：输出目录里的原版 moonlight 图标
+        try
+        {
+            var iconPath = System.IO.Path.Combine(AppContext.BaseDirectory, "app.ico");
+            if (System.IO.File.Exists(iconPath))
+            {
+                AppWindow.SetIcon(iconPath);
+            }
+        }
+        catch { }
 
         // AppWindow.Resize 收的是物理像素；按工作区留边，别超过屏幕
         RootGrid.Loaded += (_, _) =>
@@ -1857,10 +1900,10 @@ public sealed partial class MainWindow : Window
 
             Title = tag switch
             {
-                "settings" => "设置 - Moonlight V+ for PC",
-                "about" => "关于 - Moonlight V+ for PC",
-                "help" => "帮助 - Moonlight V+ for PC",
-                _ => "Moonlight V+ for PC"
+                "settings" => "设置 - Moonlight For PC",
+                "about" => "关于 - Moonlight For PC",
+                "help" => "帮助 - Moonlight For PC",
+                _ => "Moonlight For PC"
             };
         }
     }
