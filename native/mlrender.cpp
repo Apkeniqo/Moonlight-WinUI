@@ -563,6 +563,26 @@ bool UploadSoftwareFrame(const AVFrame* frame)
     return true;
 }
 
+// 诊断：Present 失败节流日志（每秒最多一条），用来定位"首帧之后卡住"
+static ULONGLONG g_lastPresentLogTick = 0;
+static long long  g_presentFailCount = 0;
+static long long  g_firstFrameTick = 0;
+
+static void LogPresentFail(HRESULT hr, const char* where)
+{
+    g_presentFailCount++;
+    const ULONGLONG now = GetTickCount64();
+    if (g_lastPresentLogTick != 0 && now - g_lastPresentLogTick < 1000)
+    {
+        return;
+    }
+    g_lastPresentLogTick = now;
+    const long long sinceFirst = g_firstFrameTick > 0 ? (long long)(now - g_firstFrameTick) : -1;
+    Log("present 失败 where=%s hr=0x%08X 累计=%lld 首帧后=%lldms app=%dx%d sw=%dx%d",
+        where, (unsigned)hr, g_presentFailCount, sinceFirst,
+        (int)g.w, (int)g.h, (int)g.swW, (int)g.swH);
+}
+
 // DWM 没消费上一帧时不要把帧丢掉（丢了画面就定格在旧帧，等 DWM 恢复才有新画面）。
 // 标志置位后，ML_Frame 下一拍先重试 Present 这个后台缓冲，成功后再继续解码新帧。
 static bool g_presentPending = false;
@@ -592,6 +612,7 @@ void PresentFrame()
     if (phr == DXGI_ERROR_WAS_STILL_DRAWING || phr == DXGI_STATUS_OCCLUDED)
     {
         g_presentPending = true;   // 帧留在后台缓冲里，下个 tick 重试
+        LogPresentFail(phr, "present");
         static std::atomic<long long> skipped{ 0 };
         const long long n = skipped.fetch_add(1) + 1;
         g.lastPresentOk = false;
@@ -615,6 +636,11 @@ void PresentFrame()
     g_presentPending = false;
     g.lastPresentOk = true;
     g.decoded++;
+    if (g_firstFrameTick == 0)
+    {
+        g_firstFrameTick = GetTickCount64();
+        Log("首帧上屏 t=%llu w=%dx%d stream=%dx%d", (unsigned long long)g_firstFrameTick, (int)g.w, (int)g.h, (int)g.swW, (int)g.swH);
+    }
 }
 
 void DrawFrame(AVFrame* frame)
@@ -882,6 +908,7 @@ __declspec(dllexport) int ML_Frame(void)
         const HRESULT r = g.swap->Present(0, DXGI_PRESENT_DO_NOT_WAIT);
         if (r == DXGI_ERROR_WAS_STILL_DRAWING || r == DXGI_STATUS_OCCLUDED)
         {
+            LogPresentFail(r, "retry");
             return 0;
         }
         if (SUCCEEDED(r))
@@ -1840,9 +1867,12 @@ extern "C" __declspec(dllexport) int ML_HostChild(void* parent, int x, int y, in
 
     UINT flags = D3D11_CREATE_DEVICE_BGRA_SUPPORT;
     D3D_FEATURE_LEVEL levels[] = { D3D_FEATURE_LEVEL_11_1, D3D_FEATURE_LEVEL_11_0 };
-    if (FAILED(D3D11CreateDevice(nullptr, D3D_DRIVER_TYPE_HARDWARE, nullptr, flags,
-                                 levels, 2, D3D11_SDK_VERSION,
-                                 &g_host.dev, nullptr, &g_host.ctx)))
+    const ULONGLONG d3dStart = GetTickCount64();
+    const HRESULT d3dHr = D3D11CreateDevice(nullptr, D3D_DRIVER_TYPE_HARDWARE, nullptr, flags,
+                                            levels, 2, D3D11_SDK_VERSION,
+                                            &g_host.dev, nullptr, &g_host.ctx);
+    Log("D3D11CreateDevice hr=0x%08X 耗时 %llu ms", (unsigned)d3dHr, (unsigned long long)(GetTickCount64() - d3dStart));
+    if (FAILED(d3dHr))
     {
         return -3;
     }
@@ -2052,9 +2082,12 @@ extern "C" __declspec(dllexport) int ML_HostChildWin32(void* parent, int w, int 
 
     UINT flags = D3D11_CREATE_DEVICE_BGRA_SUPPORT;
     D3D_FEATURE_LEVEL levels[] = { D3D_FEATURE_LEVEL_11_1, D3D_FEATURE_LEVEL_11_0 };
-    if (FAILED(D3D11CreateDevice(nullptr, D3D_DRIVER_TYPE_HARDWARE, nullptr, flags,
-                                 levels, 2, D3D11_SDK_VERSION,
-                                 &g_host.dev, nullptr, &g_host.ctx)))
+    const ULONGLONG d3dStart = GetTickCount64();
+    const HRESULT d3dHr = D3D11CreateDevice(nullptr, D3D_DRIVER_TYPE_HARDWARE, nullptr, flags,
+                                            levels, 2, D3D11_SDK_VERSION,
+                                            &g_host.dev, nullptr, &g_host.ctx);
+    Log("D3D11CreateDevice hr=0x%08X 耗时 %llu ms", (unsigned)d3dHr, (unsigned long long)(GetTickCount64() - d3dStart));
+    if (FAILED(d3dHr))
     {
         return -3;
     }
