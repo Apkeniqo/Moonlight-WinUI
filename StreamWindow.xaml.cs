@@ -837,8 +837,14 @@ public sealed partial class StreamWindow : Window
             ChildDiag($"resolution: 收到非法值，按本机 {wantWidth}x{wantHeight} 处理");
         }
 
-        var resolutionChanged = wantWidth != _settings.Width || wantHeight != _settings.Height;
-        var bitrateChanged = wantBitrate != _settings.BitrateKbps;
+        // 注意：调用方（设置页）通常先把 _settings 改成新值再调这里，
+        // 所以不能用 _settings 做比较（永远相等 → 永远不生效）。
+        // 分辨率用 native 的实际流尺寸比较；码率没有可靠当前值，直接应用（同值无害）。
+        _video?.RefreshStreamSize();
+        var curW = _video?.StreamWidth ?? 0;
+        var curH = _video?.StreamHeight ?? 0;
+        var resolutionChanged = _video is null || wantWidth != curW || wantHeight != curH;
+        var bitrateChanged = true;
         var fullScreenChanged = wantFullScreen != _settings.FullScreen;
 
         if (fullScreenChanged)
