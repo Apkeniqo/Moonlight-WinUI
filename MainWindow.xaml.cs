@@ -2006,7 +2006,14 @@ public sealed partial class MainWindow : Window
         var available = HostPage.ActualHeight;
         if (available < 200)
         {
-            return;
+            // 在设置页里切「应用卡片行数」时 HostPage 是隐藏的（高度 0），
+            // 这里直接 return 就导致卡片尺寸永远不更新 —— 看起来就是"行数切换没生效"。
+            // 用窗口内容区高度兜底，保证任何时候都能算出尺寸。
+            available = RootGrid.ActualHeight;
+            if (available < 200)
+            {
+                return;
+            }
         }
 
         // 两行：卡片（含标题和 12px 下边距）合计约占页面高度的 86%，再扣掉行距
