@@ -222,6 +222,8 @@ void SnapMenuToEdge()
     if (db < bestDist) { best = 3; }
 
     g_menuEdge = best;
+    g_snapTargetX = g_menuX;   // 另一轴保持当前位置（否则会跑到别的角）
+    g_snapTargetY = g_menuY;
     if (best == 0) { g_snapTargetX = rc.right - size - margin; }
     else if (best == 1) { g_snapTargetX = margin; }
     else if (best == 2) { g_snapTargetY = margin; }
@@ -676,12 +678,12 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
                     g_menuX = g_snapTargetX;
                     g_menuY = g_snapTargetY;
                     g_snapAnimating = false;
-                    KillTimer(hwnd, kMenuTimerId);
+                    // 不 KillTimer：定时器继续跑，负责 2 秒后的半隐藏
                 }
                 else
                 {
-                    g_menuX += dx / 12;
-                    g_menuY += dy / 12;
+                    g_menuX += dx / 7;   // 每帧 1/7 距离（约 110ms 到位）
+                    g_menuY += dy / 7;
                 }
                 SetWindowPos(g_menu, HWND_TOP, g_menuX, g_menuY, g_menuSize, g_menuSize, SWP_NOACTIVATE);
             }
