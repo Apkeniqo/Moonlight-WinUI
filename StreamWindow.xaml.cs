@@ -1053,7 +1053,13 @@ public sealed partial class StreamWindow : Window
             {
                 var p = _video.GetPerf();
                 var single = pos == 1 || pos == 4 || _settings.OverlayCornerSingleLine;
-                var lines = new List<string>(6);
+                var lines = new List<string>(7);
+
+                // 分辨率：始终显示在第一行（流尺寸实时取，动态改分辨率会跟着变）
+                _video.RefreshStreamSize();
+                lines.Add(_video.StreamWidth > 0 && _video.StreamHeight > 0
+                    ? $"{_video.StreamWidth}×{_video.StreamHeight}"
+                    : $"{_settings.Width}×{_settings.Height}");
 
                 if ((_settings.OverlayItems & 1) != 0) { lines.Add($"{p.Fps:F0} fps"); }
                 if ((_settings.OverlayItems & 2) != 0)
@@ -1992,12 +1998,7 @@ public sealed partial class StreamWindow : Window
         // 子窗口（原生弹窗）模式：HUD 画在视频上
         if (_useChildVideo && _video is not null)
         {
-            // HUD 顶部信息：分辨率 + fps + 编解码 + 网络
-            _video.RefreshStreamSize();
-            var hudRes = _video.StreamWidth > 0 && _video.StreamHeight > 0
-                ? $"{_video.StreamWidth}×{_video.StreamHeight}"
-                : $"{_settings.Width}×{_settings.Height}";
-            var text = $"{hudRes}   {p.Fps:F0} fps   {decoder}   {p.EncodeMs:F1}/{p.DecodeMs:F1} ms   网络 {p.RttMs:F1} ms   丢包 {p.LossPercent:F1}%   {p.BitrateKbps / 1000.0:F1} Mbps";
+            var text = $"{p.Fps:F0} fps   {decoder}   {p.EncodeMs:F1}/{p.DecodeMs:F1} ms   网络 {p.RttMs:F1} ms   丢包 {p.LossPercent:F1}%   {p.BitrateKbps / 1000.0:F1} Mbps";
             // HUD 坐标用「视频窗口像素」，不是流的像素（否则齿轮会被算到窗口外面）
             var hudScale = VideoHost.XamlRoot?.RasterizationScale ?? 1.0;
             var w = Math.Max(200, (int)Math.Round(VideoHost.ActualWidth * hudScale));
