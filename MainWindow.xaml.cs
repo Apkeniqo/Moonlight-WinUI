@@ -1803,14 +1803,24 @@ public sealed partial class MainWindow : Window
 
             _lastNavTag = tag;
             var showSettings = tag == "settings";
+            var showAbout = tag == "about";
 
             // 从侧边栏切页时退出主机详情页
             _currentHost = null;
             HostPage.Visibility = Visibility.Collapsed;
 
-            var incomingPage = showSettings ? (FrameworkElement)SettingsHost : ComputersPage;
-            var outgoingPage = showSettings ? (FrameworkElement)ComputersPage : SettingsHost;
-            SwitchPage(outgoingPage, incomingPage);
+            var incomingPage = showSettings ? (FrameworkElement)SettingsHost
+                            : showAbout ? (FrameworkElement)AboutHost
+                            : ComputersPage;
+
+            foreach (var page in new FrameworkElement[] { ComputersPage, SettingsHost, AboutHost })
+            {
+                if (!ReferenceEquals(page, incomingPage) && page.Visibility == Visibility.Visible)
+                {
+                    SwitchPage(page, incomingPage);
+                    break;
+                }
+            }
 
             // 进设置页时刷新「主机显示缩放」的主机列表
             if (showSettings)
@@ -1819,7 +1829,7 @@ public sealed partial class MainWindow : Window
             }
 
             // 回到电脑页时重新探一遍在线状态
-            if (!showSettings)
+            if (!showSettings && !showAbout)
             {
                 _ = RefreshHostStatusAsync();
             }
@@ -1827,6 +1837,7 @@ public sealed partial class MainWindow : Window
             Title = tag switch
             {
                 "settings" => "设置 - Moonlight V+ for PC",
+                "about" => "关于 - Moonlight V+ for PC",
                 "help" => "帮助 - Moonlight V+ for PC",
                 _ => "Moonlight V+ for PC"
             };
