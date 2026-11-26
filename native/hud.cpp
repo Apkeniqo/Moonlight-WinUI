@@ -25,6 +25,7 @@ struct HudState
     float opacity = 1.0f;
     int x = 12;
     int y = 12;
+    int align = 0;   // 0=左 1=中 2=右
     int gearX = -100;
     int gearY = -100;
     bool gearVisible = false;
@@ -304,9 +305,26 @@ void RenderTextHud()
 
     FixAlpha(bits, width, height);
 
+    int drawX = g_hud.x;
+    if (g_hud.align != 0)
+    {
+        RECT rc = {};
+        GetClientRect(g_owner, &rc);
+        const int avail = rc.right - rc.left;
+        if (g_hud.align == 1)
+        {
+            drawX = (avail - width) / 2;
+        }
+        else
+        {
+            drawX = avail - width - 16;
+        }
+        if (drawX < 0) { drawX = 0; }
+    }
+
     POINT origin = { 0, 0 };
     ClientToScreen(g_owner, &origin);
-    PushLayer(g_textWnd, memDc, bitmap, width, height, origin.x + g_hud.x, origin.y + g_hud.y);
+    PushLayer(g_textWnd, memDc, bitmap, width, height, origin.x + drawX, origin.y + g_hud.y);
     ShowWindow(g_textWnd, SW_SHOWNOACTIVATE);
 
     SelectObject(memDc, oldBitmap);
@@ -410,6 +428,11 @@ extern "C" __declspec(dllexport) void HudSetOwner(void* videoHwnd)
     // 齿轮模块已废弃：不再创建窗口
 
     HudLog("HudSetOwner owner=%p text=%p gear=%p", g_owner, g_textWnd, g_gearWnd);
+}
+
+extern "C" __declspec(dllexport) void HudSetAlign(int align)
+{
+    g_hud.align = align;
 }
 
 extern "C" __declspec(dllexport) void HudSetText(const wchar_t* text, float opacity, float x, float y)

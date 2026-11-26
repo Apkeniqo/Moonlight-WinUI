@@ -1039,7 +1039,7 @@ public sealed partial class StreamWindow : Window
         _video.PerfConfig(pos, _settings.OverlayItems, _settings.OverlayCornerSingleLine, _settings.OverlayOpacity);
 
         _perfCardTimer?.Stop();
-        _perfCardTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(500) };
+        _perfCardTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(250) };
         _perfCardTimer.Tick += (_, _) =>
         {
             // 关窗后 _video 会被 Dispose/置空，这一拍必须自己退出（定时器里抛异常 = 闪退）
@@ -2013,6 +2013,12 @@ public sealed partial class StreamWindow : Window
             var h = Math.Max(120, (int)Math.Round(VideoHost.ActualHeight * hudScale));
             var hudX = _settings.OverlayPosition is 0 or 3 ? 16.0 : _settings.OverlayPosition is 2 or 5 ? Math.Max(16.0, w - 620) : 16.0;
             var hudY = _settings.OverlayPosition is 3 or 4 or 5 ? Math.Max(16.0, h - 56) : 14.0;
+            _video.SetHudAlign(_settings.OverlayPosition switch
+            {
+                1 or 4 => 1,   // 上中 / 下中
+                2 or 5 => 2,   // 右上 / 右下
+                _ => 0,        // 左
+            });
             _video.SetHudText(text, _settings.OverlayOpacity, hudX, hudY);
             // 齿轮位置只初始化一次；之后由 native 负责拖动吸附和自动隐藏
             if (!_hudGearInitialized)

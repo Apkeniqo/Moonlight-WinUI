@@ -247,6 +247,9 @@ public sealed class VideoSurface : IDisposable
     private static extern void HudSetText(string text, float opacity, float x, float y);
 
     [DllImport(NativeDll, CallingConvention = CallingConvention.Cdecl)]
+    private static extern void HudSetAlign(int align);
+
+    [DllImport(NativeDll, CallingConvention = CallingConvention.Cdecl)]
     private static extern void HudSetGear(int x, int y, int visible);
 
     [DllImport(NativeDll, CallingConvention = CallingConvention.Cdecl)]
@@ -277,6 +280,9 @@ public sealed class VideoSurface : IDisposable
 
     /// <summary>显示/隐藏 HUD 分层窗口（打开控制面板时用）。</summary>
     public void SetHudVisible(bool visible) => HudSetVisible(visible ? 1 : 0);
+
+    /// <summary>HUD 水平对齐：0=左 1=中 2=右。</summary>
+    public void SetHudAlign(int align) => HudSetAlign(align);
 
     public void SetHudText(string text, double opacity, double x, double y)
         => HudSetText(text ?? string.Empty, (float)opacity, (float)x, (float)y);
