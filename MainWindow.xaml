@@ -50,11 +50,12 @@
                                   VerticalScrollBarVisibility="Auto"
                                   HorizontalScrollBarVisibility="Disabled">
                         <ItemsRepeater x:Name="DeviceList" ElementPrepared="DeviceList_ElementPrepared">
-                            <!-- LinedFlowLayout 自带过渡动画：条目增删和"视图尺寸变化"（拖动窗口换行）都会播放 -->
+                            <!-- UniformGridLayout：固定列宽（300），卡片严格等宽。
+                                 LinedFlowLayout 在某些宽度下会忽略我们的固定宽度，卡片宽窄不一，故换回。 -->
                             <ItemsRepeater.Layout>
-                                <LinedFlowLayout x:Name="DeviceLayout" ItemsStretch="None" LineHeight="96"
-                                                 LineSpacing="10" MinItemSpacing="10"
-                                                 ItemsInfoRequested="DeviceLayout_ItemsInfoRequested" />
+                                <UniformGridLayout MinItemWidth="300" MinItemHeight="96"
+                                                   MinRowSpacing="10" MinColumnSpacing="10"
+                                                   ItemsStretch="None" ItemsJustification="Start" />
                             </ItemsRepeater.Layout>
                             <ItemsRepeater.ItemTemplate>
                                 <DataTemplate x:DataType="local:HostEntry">

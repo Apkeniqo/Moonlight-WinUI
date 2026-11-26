@@ -154,24 +154,6 @@ public sealed partial class MainWindow : Window
         _ = RefreshHostStatusAsync();
     }
 
-    /// <summary>
-    /// LinedFlowLayout 默认按内容宽度排（卡片宽窄不一），这里通过 ItemsInfoRequested
-    /// 给整个集合指定固定的 MinWidth=MaxWidth=300 —— 等宽的同时保留布局自带的过渡动画。
-    /// </summary>
-    private void DeviceLayout_ItemsInfoRequested(LinedFlowLayout sender, LinedFlowLayoutItemsInfoRequestedEventArgs args)
-    {
-        args.MinWidth = 300;
-        args.MaxWidth = 300;
-
-        try
-        {
-            System.IO.File.AppendAllText(
-                System.IO.Path.Combine(AppContext.BaseDirectory, "backdrop.log"),
-                $"{DateTime.Now:HH:mm:ss.fff} itemsInfo start={args.ItemsRangeStartIndex} len={args.ItemsRangeRequestedLength}{Environment.NewLine}");
-        }
-        catch { }
-    }
-
     /// <summary>ItemsRepeater 生成卡片时挂上点击事件（Tag 带整条 HostEntry 记录）。</summary>
     private void DeviceList_ElementPrepared(ItemsRepeater sender, ItemsRepeaterElementPreparedEventArgs args)
     {
