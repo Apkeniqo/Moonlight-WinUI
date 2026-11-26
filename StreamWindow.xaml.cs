@@ -56,7 +56,6 @@ public sealed partial class StreamWindow : Window
     private int _videoFrames;
     private double _lastVideoReport = -1;
     private bool _isActive = true;
-    private bool _autoLockPending;
 
     public StreamWindow(string host, bool demo, StreamSettings settings, int appId = 1, string? appTitle = null)
     {
@@ -72,7 +71,6 @@ public sealed partial class StreamWindow : Window
         StreamSettings.Saved += OnSettingsSaved;
         _appId = appId;
         _appTitle = appTitle;
-        _autoLockPending = _settings.AutoPointerLock;
 
         // 和主界面同一套窗口材质 + 自绘标题栏（内容延伸到标题栏，材质才铺得满）
         SystemBackdrop = new MicaBackdrop();
@@ -2363,15 +2361,6 @@ public sealed partial class StreamWindow : Window
             if (_pointerLocked && !_pointerLockForced && streamState != 2)
             {
                 ExitPointerLock("stream ended");
-            }
-
-            // 设置里开了「连接后自动锁定指针」：真正开流后锁一次，用户手动释放后不再抢
-            if (_autoLockPending && !_pointerLocked && streamState == 2 && _isActive)
-            {
-                if (TryEnterPointerLock(force: false))
-                {
-                    _autoLockPending = false;
-                }
             }
 
             if (streamState != 0)

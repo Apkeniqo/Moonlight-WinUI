@@ -990,7 +990,6 @@ public sealed partial class MainWindow : Window
         BitrateBox.Value = Math.Clamp(_settings.BitrateKbps / 1000.0, 5, 100);
         MouseSensitivitySlider.Value = Math.Clamp(_settings.MouseSensitivity, 0.3, 2.0);
         MouseSensitivityText.Text = $"{_settings.MouseSensitivity:F2}×";
-        AutoLockSwitch.IsOn = _settings.AutoPointerLock;
         CodecBox.SelectedIndex = Math.Clamp(_settings.Codec, 0, 3);
         WindowModeBox.SelectedIndex = _settings.FullScreen ? 1 : 0;
         SwapMouseSwitch.IsOn = _settings.SwapMouseButtons;
@@ -1082,18 +1081,6 @@ public sealed partial class MainWindow : Window
         PersistSettings($"{_settings.BitrateKbps / 1000.0:F0} Mbps");
         _streamWindow?.ApplyStreamSettings(_settings.Width, _settings.Height, _settings.BitrateKbps, _settings.FullScreen);
     }
-
-    private void AutoLockSwitch_Toggled(object sender, RoutedEventArgs e)
-    {
-        if (!_settingsReady)
-        {
-            return;
-        }
-
-        _settings.AutoPointerLock = AutoLockSwitch.IsOn;
-        PersistSettings(AutoLockSwitch.IsOn ? "连接后自动锁定指针：开" : "连接后自动锁定指针：关");
-    }
-
     private void CodecBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         if (!_settingsReady || CodecBox.SelectedIndex < 0)
@@ -1335,7 +1322,6 @@ public sealed partial class MainWindow : Window
         ResolutionBox.SelectedIndex = 2;    // 1920×1080
         FpsBox.SelectedIndex = 1;           // 60
         BitrateBox.Value = defaults.BitrateKbps / 1000.0;
-        AutoLockSwitch.IsOn = defaults.AutoPointerLock;
         CodecBox.SelectedIndex = 0;         // 自动
         WindowModeBox.SelectedIndex = 0;    // 窗口
         SwapMouseSwitch.IsOn = defaults.SwapMouseButtons;
@@ -1353,7 +1339,6 @@ public sealed partial class MainWindow : Window
         _settings.Height = defaults.Height;
         _settings.Fps = defaults.Fps;
         _settings.BitrateKbps = defaults.BitrateKbps;
-        _settings.AutoPointerLock = defaults.AutoPointerLock;
         _settings.Codec = defaults.Codec;
         _settings.FullScreen = defaults.FullScreen;
         _settings.SwapMouseButtons = defaults.SwapMouseButtons;

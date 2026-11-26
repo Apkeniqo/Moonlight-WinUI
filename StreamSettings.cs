@@ -19,9 +19,6 @@ public sealed class StreamSettings
 
     public int BitrateKbps { get; set; } = 20000;
 
-    /// <summary>连上后自动进入指针锁定（默认关，免得一连接就把鼠标藏起来）。</summary>
-    public bool AutoPointerLock { get; set; }
-
     // ---- 以下与 Qt 版（moonlight-qt）的设置项同名/同义 ----
 
     /// <summary>Qt: windowmode —— false=窗口，true=全屏。</summary>

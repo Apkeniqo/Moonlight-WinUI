@@ -240,10 +240,6 @@
                     </StackPanel>
 
 
-                    <ToggleSwitch x:Name="AutoLockSwitch" Header="连接后自动锁定指针"
-                                  OnContent="开" OffContent="关"
-                                  Toggled="AutoLockSwitch_Toggled" />
-
                     <ToggleSwitch x:Name="SwapMouseSwitch" Header="交换鼠标左右键"
                                   OnContent="开" OffContent="关"
                                   Toggled="SwapMouseSwitch_Toggled" />
