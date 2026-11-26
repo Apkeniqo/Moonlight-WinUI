@@ -44,6 +44,12 @@ std::wstring g_title = L"Moonlight 串流";
 
 int g_menuSize = 44;
 bool g_menuHover = false;
+int  g_snapTargetX = 0, g_snapTargetY = 0;   // 吸附目标（动画用）
+bool g_snapAnimating = false;
+bool g_menuHidden = false;                   // 已半隐藏到边缘
+int  g_menuEdge = 0;                         // 0右 1左 2上 3下
+ULONGLONG g_menuLastActive = 0;              // 最后一次悬停/拖动时间
+const int kMenuTimerId = 4;                  // 吸附/半隐藏定时器
 
 WINDOWPLACEMENT g_prevPlacement = { sizeof(WINDOWPLACEMENT) };
 LONG_PTR g_prevStyle = 0;
@@ -215,13 +221,44 @@ void SnapMenuToEdge()
     if (dt < bestDist) { bestDist = dt; best = 2; }
     if (db < bestDist) { best = 3; }
 
-    if (best == 0) { g_menuX = rc.right - size - margin; }
-    else if (best == 1) { g_menuX = margin; }
-    else if (best == 2) { g_menuY = margin; }
-    else { g_menuY = rc.bottom - size - margin; }
+    g_menuEdge = best;
+    if (best == 0) { g_snapTargetX = rc.right - size - margin; }
+    else if (best == 1) { g_snapTargetX = margin; }
+    else if (best == 2) { g_snapTargetY = margin; }
+    else { g_snapTargetY = rc.bottom - size - margin; }
 
-    ClampMenu();
-    SetWindowPos(g_menu, HWND_TOP, g_menuX, g_menuY, size, size, SWP_NOACTIVATE | SWP_SHOWWINDOW);
+    // 平滑吸附（每 16ms 走 1/12 距离，约 200ms 到位）
+    g_snapAnimating = true;
+    g_menuHidden = false;
+    g_menuLastActive = GetTickCount64();
+    if (g_win) { SetTimer(g_win, kMenuTimerId, 16, nullptr); }
+}
+
+// 无操作 2 秒：半隐藏到贴着的画面边缘
+void HideMenuToEdge()
+{
+    if (!g_menu || !g_win)
+    {
+        return;
+    }
+
+    RECT rc = {};
+    GetClientRect(g_win, &rc);
+    const int size = g_menuSize;
+
+    switch (g_menuEdge)
+    {
+    case 1:  g_menuX = -size / 2; break;                       // 左
+    case 2:  g_menuY = -size / 2; break;                       // 上
+    case 3:  g_menuY = rc.bottom - size / 2; break;            // 下
+    default: g_menuX = rc.right - size / 2; break;             // 右
+    }
+
+    g_menuHidden = true;
+    g_snapAnimating = false;
+    SetWindowPos(g_menu, HWND_TOP, g_menuX, g_menuY, size, size, SWP_NOACTIVATE);
+    SetLayeredWindowAttributes(g_menu, 0, 120, LWA_ALPHA);
+    KillTimer(g_win, kMenuTimerId);
 }
 
 LRESULT CALLBACK MenuProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
@@ -234,6 +271,7 @@ LRESULT CALLBACK MenuProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
 
     case WM_MOUSELEAVE:
         g_menuHover = false;
+        g_menuLastActive = GetTickCount64();
         SetLayeredWindowAttributes(hwnd, 0, 140, LWA_ALPHA);   // 未悬停：半透明
         return 0;
 
@@ -253,6 +291,13 @@ LRESULT CALLBACK MenuProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
     }
 
     case WM_MOUSEMOVE:
+        g_menuLastActive = GetTickCount64();
+        if (g_menuHidden)
+        {
+            // 鼠标移到露出的那一半：立即收回来
+            g_menuHidden = false;
+            SnapMenuToEdge();
+        }
         if (!g_menuHover)
         {
             g_menuHover = true;
@@ -616,6 +661,38 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
         if (g_moveCallback) { g_moveCallback(); }   // 缩放时也让面板实时跟随
         PERF_Reposition();
         PositionMenuButton();
+        return 0;
+
+    case WM_TIMER:
+        if (wp == kMenuTimerId && g_menu)
+        {
+            // 平滑吸附
+            if (g_snapAnimating)
+            {
+                const int dx = g_snapTargetX - g_menuX;
+                const int dy = g_snapTargetY - g_menuY;
+                if (abs(dx) <= 2 && abs(dy) <= 2)
+                {
+                    g_menuX = g_snapTargetX;
+                    g_menuY = g_snapTargetY;
+                    g_snapAnimating = false;
+                    KillTimer(hwnd, kMenuTimerId);
+                }
+                else
+                {
+                    g_menuX += dx / 12;
+                    g_menuY += dy / 12;
+                }
+                SetWindowPos(g_menu, HWND_TOP, g_menuX, g_menuY, g_menuSize, g_menuSize, SWP_NOACTIVATE);
+            }
+
+            // 贴边无操作 2 秒 → 半隐藏
+            if (!g_menuHidden && !g_menuDragging && !g_snapAnimating &&
+                GetTickCount64() - g_menuLastActive > 2000)
+            {
+                HideMenuToEdge();
+            }
+        }
         return 0;
 
     case WM_MOVE:
