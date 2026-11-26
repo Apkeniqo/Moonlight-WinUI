@@ -886,6 +886,26 @@ public sealed partial class MainWindow : Window
         PersistSettings($"已添加刷新率：{fps} Hz");
     }
 
+    private void DeleteResolutionButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (ResolutionBox.SelectedItem is not ComboBoxItem item ||
+            item.Tag is not ValueTuple<int, int> res)
+        {
+            return;
+        }
+
+        var key = res.Item1 + "x" + res.Item2;
+        if (!_settings.CustomResolutions.Contains(key))
+        {
+            PersistSettings("只能删除自定义分辨率");
+            return;
+        }
+
+        _settings.CustomResolutions.Remove(key);
+        ResolutionBox.Items.Remove(item);
+        PersistSettings($"已删除自定义分辨率 {res.Item1}×{res.Item2}");
+    }
+
     private async void CustomResolutionButton_Click(object sender, RoutedEventArgs e)
     {
         var widthBox = new NumberBox

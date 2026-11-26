@@ -191,14 +191,21 @@
                         <TextBlock Text="分辨率" Width="110" VerticalAlignment="Center" />
                         <ComboBox x:Name="ResolutionBox" Width="200"
                                   SelectionChanged="ResolutionBox_SelectionChanged" />
-                        <Button Content="自定义" Click="CustomResolutionButton_Click" />
+                        <Button Content="&#xE710;" FontFamily="Segoe MDL2 Assets"
+                                ToolTipService.ToolTip="添加自定义分辨率"
+                                Click="CustomResolutionButton_Click" />
+                        <Button Content="&#xE74D;" FontFamily="Segoe MDL2 Assets"
+                                ToolTipService.ToolTip="删除当前自定义分辨率"
+                                Click="DeleteResolutionButton_Click" />
                     </StackPanel>
 
                     <StackPanel Orientation="Horizontal" Spacing="12">
                         <TextBlock Text="刷新率" Width="110" VerticalAlignment="Center" />
                         <ComboBox x:Name="FpsBox" Width="200"
                                   SelectionChanged="FpsBox_SelectionChanged" />
-                        <Button Content="自定义" Click="CustomFpsButton_Click" />
+                        <Button Content="&#xE710;" FontFamily="Segoe MDL2 Assets"
+                                ToolTipService.ToolTip="添加自定义刷新率"
+                                Click="CustomFpsButton_Click" />
                     </StackPanel>
 
                     <StackPanel Orientation="Horizontal" Spacing="12">
