@@ -352,6 +352,7 @@ internal sealed partial class ControlWindow : Window
         _bitrate.Value = Math.Clamp(_settings.BitrateKbps / 1000.0, 5, 200);
         _bitrateText.Text = $"{_bitrate.Value:F0} Mbps";
         _fullScreen.IsOn = _settings.FullScreen;
+        _fullScreen.Toggled += (_, _) => Diag($"toggle 全屏={_fullScreen.IsOn} t={Environment.TickCount64}");
     }
 
     /// <summary>在屏幕坐标 (x, y) 处显示（调用方算好画面正中的左上角）。</summary>
@@ -509,6 +510,7 @@ internal sealed partial class ControlWindow : Window
         // 全屏串流窗口是整屏 WS_POPUP，普通 z-order 会被它盖住（表现为"闪一下就消失"）。
         // 面板显示期间置顶，关闭时恢复。
         SetWindowPos(PanelHwnd, HwndTopmost, 0, 0, 0, 0, SwpNoMove | SwpNoSize | SwpNoActivate);
+        Diag($"ShowAt t={Environment.TickCount64} fg=0x{GetForegroundWindow().ToInt64():X} self=0x{PanelHwnd.ToInt64():X}");
         Diag($"ShowAt topmost fg=0x{GetForegroundWindow().ToInt64():X} self=0x{PanelHwnd.ToInt64():X}");
 
         // 每次打开都刷新一次（主机可能在别处改过缩放）

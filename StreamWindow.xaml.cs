@@ -2378,6 +2378,17 @@ public sealed partial class StreamWindow : Window
             return;
         }
 
+        // 诊断：渲染泵两次 tick 间隔异常（>300ms）说明 DWM/合成器把 UI 线程挤住了
+        {
+            var nowMs = Environment.TickCount64;
+            var gap = nowMs - System.Threading.Interlocked.Read(ref _lastRenderTickMs);
+            if (gap > 300 && nowMs - _lastRenderGapWarn > 1000)
+            {
+                _lastRenderGapWarn = nowMs;
+                ChildDiag($"render 间隔 {gap}ms（面板={(_controlWindow is null ? 0 : 1)}）");
+            }
+        }
+
         System.Threading.Interlocked.Exchange(ref _lastRenderTickMs, Environment.TickCount64);
 
         var t0 = _clock.Elapsed.TotalMilliseconds;
@@ -2477,6 +2488,7 @@ public sealed partial class StreamWindow : Window
     private long _lastCursorDiagTick;   // cursorTick 诊断节流
     private int _cursorHiddenTicks;     // 主机光标连续不可见的拍数（自动锁定防抖）
     private bool _controlPrecreated;    // 控制面板是否已预创建
+    private long _lastRenderGapWarn;    // render 间隔诊断节流
     private DispatcherTimer? _pointerTimer;   // 游戏内自动锁定检测（所有窗口模式都要跑）
     private bool _pointerLockForced;
     private int _hideSteps;
