@@ -563,11 +563,6 @@ public sealed partial class StreamWindow : Window
         ControlPanel.Visibility = Visibility.Collapsed;
     }
 
-    private Flyout? _gearFlyout;
-    private ComboBox? _menuResolution;
-    private Slider? _menuBitrate;
-    private TextBlock? _menuBitrateText;
-    private ToggleSwitch? _menuFullScreen;
 
     /// <summary>原生弹窗「应用」回调（由 native 以函数指针调用）。</summary>
     private void OnPanelApply(int width, int height, int kbps, int fullscreen)
@@ -754,26 +749,6 @@ public sealed partial class StreamWindow : Window
     }
 
     /// <summary>分辨率：基地版要求走控制流协议，HTTP 会返回 400 → 返回 false 由调用方回退重连。</summary>
-    private bool TryChangeResolutionOnHost(int width, int height)
-    {
-        try
-        {
-            var baseDir = AppContext.BaseDirectory;
-            var ok = NativeTls.TryGet(
-                _host, 47984,
-                $"/stream/settings?type=0&value={width}x{height}&clientname=MoonlightWinUI",
-                System.IO.Path.Combine(baseDir, "creds", "client.crt"),
-                System.IO.Path.Combine(baseDir, "creds", "client.key"),
-                out var body, out _);
-
-            return ok && body.Contains("status_code=\"200\"");
-        }
-        catch
-        {
-            return false;
-        }
-    }
-
     private void ControlClose_Click(object sender, RoutedEventArgs e)
     {
         ControlPanel.Visibility = Visibility.Collapsed;
@@ -952,36 +927,9 @@ public sealed partial class StreamWindow : Window
 
     /// <summary>跟随主机光标：可见性 + 形状（主机在本地光标模式下推 LI_CURSOR_UPDATE）。</summary>
     private Microsoft.UI.Xaml.Media.Imaging.WriteableBitmap? _cursorBitmap;
-    private int _cursorTickLog;
 
     /// <summary>主机推来的 BGRA 像素 → WriteableBitmap（尺寸变了就重建）。</summary>
-    private void UpdateCursorBitmap(byte[] bgra, int width, int height)
-    {
-        if (width <= 0 || height <= 0 || bgra.Length < width * height * 4)
-        {
-            return;
-        }
-
-        if (_cursorBitmap is null || _cursorBitmap.PixelWidth != width || _cursorBitmap.PixelHeight != height)
-        {
-            _cursorBitmap = new Microsoft.UI.Xaml.Media.Imaging.WriteableBitmap(width, height);
-            CursorImage.Width = width;
-            CursorImage.Height = height;
-        }
-
-        using (var stream = _cursorBitmap.PixelBuffer.AsStream())
-        {
-            stream.Seek(0, System.IO.SeekOrigin.Begin);
-            stream.Write(bgra, 0, width * height * 4);
-        }
-
-        _cursorBitmap.Invalidate();
-        CursorImage.Source = _cursorBitmap;
-    }
-
     /// <summary>光标跟着主机：形状用主机推的位图自己画，系统指针藏起来（Parsec 式）。</summary>
-    private Microsoft.UI.Input.InputSystemCursorShape _cursorSystemShape =
-        Microsoft.UI.Input.InputSystemCursorShape.Arrow;
 
     /// <summary>从主机位图猜一个最接近的系统光标形状（WinUI 只支持内置形状）。</summary>
 
@@ -1059,12 +1007,9 @@ public sealed partial class StreamWindow : Window
     [DllImport("user32.dll")]
     private static extern bool GetClientRect(IntPtr hwnd, out WinRect rect);
 
-    private int _setCursorCalls;
     private bool _cursorLocalMode;
     private bool _firstFrameShown;
     private GamepadInput? _gamepad;
-    private long _lastIdrTick;
-    private int _stallTicks;
     private DispatcherTimer? _perfCardTimer;
     private bool _closed;   // StreamWindow 已关闭：所有定时器回调必须提前退出
     private DispatcherTimer? _renderWatchdog;   // Rendering 停摆时的兜底驱动
@@ -1876,30 +1821,6 @@ public sealed partial class StreamWindow : Window
     }
 
     /// <summary>连接步骤文字：直接画在 HUD 层（视频之上），居中出现。</summary>
-    private void ShowConnectStatus(string text)
-    {
-        if (!_useWin32Stream || _video is null)
-        {
-            StreamText.Text = text;
-            return;
-        }
-
-        var scale = VideoHost.XamlRoot?.RasterizationScale ?? 1.0;
-        var w = Math.Max(200, (int)Math.Round(VideoHost.ActualWidth * scale));
-        var h = Math.Max(120, (int)Math.Round(VideoHost.ActualHeight * scale));
-        var x = Math.Max(16, (w - text.Length * 14) / 2);
-        _video.SetHudText(text, 1.0, x, Math.Max(16, h / 2));
-        _video.SetHudGear(0, 0, false);
-    }
-
-    private void HideConnectStatus()
-    {
-        if (_useWin32Stream && _video is not null)
-        {
-            _video.SetHudText(string.Empty, 1.0, 0, 0);
-            _video.SetHudGear(0, 0, false);
-        }
-    }
     private DispatcherTimer? _connectTimeoutTimer;
 
     /// <summary>连接超时：到点还没首帧就提示并关掉串流窗口。</summary>

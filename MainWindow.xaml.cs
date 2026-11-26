@@ -228,20 +228,6 @@ public sealed partial class MainWindow : Window
         slot.RightTapped += DeviceCard_RightTapped;
         return slot;
     }
-
-    private static string Letter(string name)
-    {
-        foreach (var ch in name)
-        {
-            if (char.IsLetterOrDigit(ch))
-            {
-                return char.ToUpperInvariant(ch).ToString();
-            }
-        }
-
-        return "?";
-    }
-
     /// <summary>电脑页的「刷新」按钮：重新探测所有主机的在线状态（探测期间转圈并禁用按钮）。</summary>
     private async void RefreshHostsButton_Click(object sender, RoutedEventArgs e)
     {
@@ -309,30 +295,6 @@ public sealed partial class MainWindow : Window
             return false;
         }
     }
-
-
-    private static Color LetterColor(string seed)
-    {
-        // 同一台电脑永远是同一个颜色：按地址哈希取一个固定色板
-        var palette = new[]
-        {
-            Color.FromArgb(255, 0x0F, 0x6B, 0x5F),
-            Color.FromArgb(255, 0xD8, 0x8B, 0x00),
-            Color.FromArgb(255, 0x5A, 0x4B, 0x8A),
-            Color.FromArgb(255, 0x1F, 0x5F, 0x9F),
-            Color.FromArgb(255, 0x8A, 0x3B, 0x3B),
-            Color.FromArgb(255, 0x2F, 0x6B, 0x2F),
-        };
-
-        var hash = 0;
-        foreach (var ch in seed)
-        {
-            hash = unchecked(hash * 31 + ch);
-        }
-
-        return palette[Math.Abs(hash) % palette.Length];
-    }
-
     /// <summary>应用卡片：套用和电脑卡片一样的磁贴动画（按顺序错开进场）。</summary>
     private void AppCard_Loaded(object sender, RoutedEventArgs e)
     {
