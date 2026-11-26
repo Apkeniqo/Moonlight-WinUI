@@ -175,6 +175,15 @@ public sealed partial class MainWindow : Window
     /// <summary>ItemsRepeater 生成卡片时挂上点击事件（Tag 带整条 HostEntry 记录）。</summary>
     private void DeviceList_ElementPrepared(ItemsRepeater sender, ItemsRepeaterElementPreparedEventArgs args)
     {
+        // 诊断：无条件记一行，确认事件到底有没有触发
+        try
+        {
+            System.IO.File.AppendAllText(
+                System.IO.Path.Combine(AppContext.BaseDirectory, "backdrop.log"),
+                $"{DateTime.Now:HH:mm:ss.fff} elementPrepared idx={args.Index} el={(args.Element?.GetType().Name ?? "null")}{Environment.NewLine}");
+        }
+        catch { }
+
         if (args.Element is not FrameworkElement element)
         {
             return;
