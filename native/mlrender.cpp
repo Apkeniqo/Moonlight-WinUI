@@ -563,6 +563,10 @@ bool UploadSoftwareFrame(const AVFrame* frame)
     return true;
 }
 
+// DWM 没消费上一帧时不要把帧丢掉（丢了画面就定格在旧帧，等 DWM 恢复才有新画面）。
+// 标志置位后，ML_Frame 下一拍先重试 Present 这个后台缓冲，成功后再继续解码新帧。
+static bool g_presentPending = false;
+
 void PresentFrame()
 {
     D3D11_VIEWPORT vp = { 0, 0, (float)g.w, (float)g.h, 0, 1 };
@@ -587,6 +591,7 @@ void PresentFrame()
     const HRESULT phr = g.swap->Present(0, DXGI_PRESENT_DO_NOT_WAIT);
     if (phr == DXGI_ERROR_WAS_STILL_DRAWING || phr == DXGI_STATUS_OCCLUDED)
     {
+        g_presentPending = true;   // 帧留在后台缓冲里，下个 tick 重试
         static std::atomic<long long> skipped{ 0 };
         const long long n = skipped.fetch_add(1) + 1;
         g.lastPresentOk = false;
@@ -607,6 +612,7 @@ void PresentFrame()
         return;
     }
 
+    g_presentPending = false;
     g.lastPresentOk = true;
     g.decoded++;
 }
@@ -867,6 +873,23 @@ __declspec(dllexport) int ML_Frame(void)
         if (!g.dec || !g.pkt || !g.frame)
     {
         return 0;
+    }
+
+    // 上一帧还没被 DWM 消费（窗口被遮挡/置顶弹窗盖住）：先重试 Present，
+    // 成功之前不解码新帧 —— 否则每拍都丢帧，画面就一直定格。
+    if (g_presentPending && g.swap)
+    {
+        const HRESULT r = g.swap->Present(0, DXGI_PRESENT_DO_NOT_WAIT);
+        if (r == DXGI_ERROR_WAS_STILL_DRAWING || r == DXGI_STATUS_OCCLUDED)
+        {
+            return 0;
+        }
+        if (SUCCEEDED(r))
+        {
+            g_presentPending = false;
+            g.lastPresentOk = true;
+            g.decoded++;
+        }
     }
 
     // 解码期间不允许换解码器（DrSetup 在会话线程里调 ML_SetVideoFormat）
