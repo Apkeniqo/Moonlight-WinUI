@@ -155,12 +155,12 @@ POINT g_menuDragStart = {};
 void ClampMenu()
 {
     RECT rc = {};
-    GetClientRect(g_win, &rc);
+    GetWindowRect(g_win, &rc);
     const int size = g_menuSize;
-    if (g_menuX < 4) { g_menuX = 4; }
-    if (g_menuY < 4) { g_menuY = 4; }
-    if (g_menuX > rc.right - size - 4) { g_menuX = rc.right - size - 4; }
-    if (g_menuY > rc.bottom - size - 4) { g_menuY = rc.bottom - size - 4; }
+    if (g_menuX < rc.left) { g_menuX = rc.left; }
+    if (g_menuY < rc.top) { g_menuY = rc.top; }
+    if (g_menuX > rc.right - size) { g_menuX = rc.right - size; }
+    if (g_menuY > rc.bottom - size) { g_menuY = rc.bottom - size; }
 }
 
 // 实测非客户区尺寸（窗口矩形 - 客户区）：ncW 含左右边框，ncH 含标题栏 + 下边框。
@@ -190,11 +190,11 @@ void PositionMenuButton()
 
     if (g_menuX < 0 || g_menuY < 0)
     {
-        // 首次：放窗口右上角
+        // 首次：放窗口右上角（屏幕坐标，与 SetWindowPos 保持一致）
         RECT rc = {};
-        GetClientRect(g_win, &rc);
+        GetWindowRect(g_win, &rc);
         g_menuX = rc.right - g_menuSize - 16;
-        g_menuY = 14;
+        g_menuY = rc.top + 14;
     }
 
     ClampMenu();
@@ -206,13 +206,13 @@ void PositionMenuButton()
 void SnapMenuToEdge()
 {
     RECT rc = {};
-    GetClientRect(g_win, &rc);
+    GetWindowRect(g_win, &rc);
 
     const int size = g_menuSize;
-    const int margin = 12;
-    const int dl = g_menuX;
+    const int margin = 12;   // 保持吸附后离边缘的间距
+    const int dl = g_menuX - rc.left;
     const int dr = (rc.right - size) - g_menuX;
-    const int dt = g_menuY;
+    const int dt = g_menuY - rc.top;
     const int db = (rc.bottom - size) - g_menuY;
 
     int best = 0;
@@ -245,13 +245,13 @@ void HideMenuToEdge()
     }
 
     RECT rc = {};
-    GetClientRect(g_win, &rc);
+    GetWindowRect(g_win, &rc);
     const int size = g_menuSize;
 
     switch (g_menuEdge)
     {
-    case 1:  g_menuX = -size / 2; break;                       // 左
-    case 2:  g_menuY = -size / 2; break;                       // 上
+    case 1:  g_menuX = rc.left - size / 2 + 2; break;          // 左
+    case 2:  g_menuY = rc.top - size / 2 + 2; break;           // 上
     case 3:  g_menuY = rc.bottom - size / 2; break;            // 下
     default: g_menuX = rc.right - size / 2; break;             // 右
     }
