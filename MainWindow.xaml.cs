@@ -886,19 +886,40 @@ public sealed partial class MainWindow : Window
         PersistSettings($"已添加刷新率：{fps} Hz");
     }
 
-    private void AboutGithubLink_Click(object sender, RoutedEventArgs e)
+    private async void AboutGithubLink_Click(object sender, RoutedEventArgs e)
     {
+        // HyperlinkButton 自己不会导航，必须显式打开；用 Launcher 在 WinUI 里最可靠
+        var uri = new Uri("https://github.com/Apkeniqo/Moonlight-WinUI");
+        bool opened = false;
         try
         {
-            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
-            {
-                FileName = "https://github.com/Apkeniqo/Moonlight-WinUI",
-                UseShellExecute = true,
-            });
+            opened = await Windows.System.Launcher.LaunchUriAsync(uri);
         }
-        catch
+        catch (Exception ex)
         {
-            PersistSettings("无法打开浏览器");
+            System.Diagnostics.Debug.WriteLine($"[about] LaunchUriAsync failed: {ex}");
+        }
+
+        if (!opened)
+        {
+            try
+            {
+                System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+                {
+                    FileName = uri.ToString(),
+                    UseShellExecute = true,
+                });
+                opened = true;
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[about] Process.Start failed: {ex}");
+            }
+        }
+
+        if (!opened)
+        {
+            PersistSettings("无法打开浏览器，请手动访问 github.com/Apkeniqo/Moonlight-WinUI");
         }
     }
 
