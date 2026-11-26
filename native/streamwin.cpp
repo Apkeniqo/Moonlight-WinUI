@@ -706,7 +706,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
             {
                 const int dx = g_snapTargetX - g_menuX;
                 const int dy = g_snapTargetY - g_menuY;
-                if (abs(dx) <= 2 && abs(dy) <= 2)
+                if (abs(dx) <= 3 && abs(dy) <= 3)
                 {
                     g_menuX = g_snapTargetX;
                     g_menuY = g_snapTargetY;
@@ -715,8 +715,14 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
                 }
                 else
                 {
-                    g_menuX += dx / 7;   // 每帧 1/7 距离（约 110ms 到位）
-                    g_menuY += dy / 7;
+                    // 每帧 1/7 距离（约 110ms 到位）；距离小于 7 时保底走 1px，
+                    // 否则 dx/7 恒为 0 → 永远到不了目标 → 半隐藏的 2 秒检查永远被 anim 挡住
+                    int stepX = dx / 7;
+                    int stepY = dy / 7;
+                    if (stepX == 0 && dx != 0) { stepX = dx > 0 ? 1 : -1; }
+                    if (stepY == 0 && dy != 0) { stepY = dy > 0 ? 1 : -1; }
+                    g_menuX += stepX;
+                    g_menuY += stepY;
                 }
                 SetWindowPos(g_menu, HWND_TOP, g_menuX, g_menuY, g_menuSize, g_menuSize, SWP_NOACTIVATE);
             }
