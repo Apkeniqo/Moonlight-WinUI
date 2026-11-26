@@ -2002,11 +2002,27 @@ public sealed partial class StreamWindow : Window
         // 子窗口（原生弹窗）模式：HUD 画在视频上
         if (_useChildVideo && _video is not null)
         {
+            // 与浮窗版（perfcard）完全同一套项目/格式，按显示项目位控制
             _video.RefreshStreamSize();
-            var hudRes = _video.StreamWidth > 0 && _video.StreamHeight > 0
-                ? $"{_video.StreamWidth}×{_video.StreamHeight}"
-                : $"{_settings.Width}×{_settings.Height}";
-            var text = $"{hudRes}   {p.Fps:F0} fps   {decoder}   {p.EncodeMs:F1}/{p.DecodeMs:F1} ms   网络 {p.RttMs:F1} ms   丢包 {p.LossPercent:F1}%   {p.BitrateKbps / 1000.0:F1} Mbps";
+            var hudParts = new List<string>(7);
+            if ((_settings.OverlayItems & 64) != 0)
+            {
+                hudParts.Add(_video.StreamWidth > 0 && _video.StreamHeight > 0
+                    ? $"{_video.StreamWidth}×{_video.StreamHeight}"
+                    : $"{_settings.Width}×{_settings.Height}");
+            }
+            if ((_settings.OverlayItems & 1) != 0) { hudParts.Add($"{p.Fps:F0} fps"); }
+            if ((_settings.OverlayItems & 2) != 0)
+            {
+                var (vc, hw) = _video.GetVideoInfo();
+                hudParts.Add(vc switch { 1 => "H264", 2 => "HEVC", 3 => "AV1", _ => _settings.Codec == 2 ? "HEVC" : _settings.Codec == 1 ? "H264" : "AV1" });
+                if (!hw) { hudParts[hudParts.Count - 1] = "CPU"; }
+            }
+            if ((_settings.OverlayItems & 4) != 0) { hudParts.Add($"编码/解码：{p.EncodeMs:F1} ms/{p.DecodeMs:F1} ms"); }
+            if ((_settings.OverlayItems & 8) != 0) { hudParts.Add($"网络：{p.RttMs:F1} ms"); }
+            if ((_settings.OverlayItems & 16) != 0) { hudParts.Add($"丢包：{p.LossPercent:F1}%"); }
+            if ((_settings.OverlayItems & 32) != 0) { hudParts.Add($"{p.BitrateKbps / 1000.0:F1} Mbps"); }
+            var text = string.Join("   ", hudParts);
             // HUD 坐标用「视频窗口像素」，不是流的像素（否则齿轮会被算到窗口外面）
             var hudScale = VideoHost.XamlRoot?.RasterizationScale ?? 1.0;
             var w = Math.Max(200, (int)Math.Round(VideoHost.ActualWidth * hudScale));
