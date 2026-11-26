@@ -49,8 +49,35 @@ bool g_snapAnimating = false;
 bool g_menuHidden = false;                   // 已半隐藏到边缘
 bool g_snapToHide = false;                   // 当前吸附动画的目标是"半隐藏位"
 int g_snapStartX = 0, g_snapStartY = 0;       // 动画起点
+int g_snapCtrlX = 0, g_snapCtrlY = 0;         // 二次贝塞尔控制点（曲线路径）
 ULONGLONG g_snapStartTick = 0;                // 动画开始时刻
 const int kSnapDurationMs = 200;              // 吸附时长
+
+// 由起点/终点算控制点：中点 + 垂直方向的偏移（走弧线而不是直线）
+void SetupSnapPath(int fromX, int fromY, int toX, int toY)
+{
+    g_snapStartX = fromX;
+    g_snapStartY = fromY;
+    g_snapStartTick = GetTickCount64();
+
+    const double dx = (double)(toX - fromX);
+    const double dy = (double)(toY - fromY);
+    const double dist = sqrt(dx * dx + dy * dy);
+    if (dist < 1.0)
+    {
+        g_snapCtrlX = toX;
+        g_snapCtrlY = toY;
+        return;
+    }
+
+    // 法线方向（逆时针），弯曲量 = 距离的 25%
+    const double nx = -dy / dist;
+    const double ny = dx / dist;
+    const double bulge = dist * 0.25;
+
+    g_snapCtrlX = (int)(fromX + dx * 0.5 + nx * bulge);
+    g_snapCtrlY = (int)(fromY + dy * 0.5 + ny * bulge);
+}
 int  g_menuEdge = 0;                         // 0右 1左 2上 3下
 ULONGLONG g_menuLastActive = 0;              // 最后一次悬停/拖动时间
 const int kMenuTimerId = 4;                  // 吸附/半隐藏定时器
@@ -254,10 +281,8 @@ void SnapMenuToEdge()
     else if (best == 2) { g_snapTargetY = margin; }
     else { g_snapTargetY = rc.bottom - size - margin; }
 
-    // 曲线吸附（ease-out cubic，200ms）
-    g_snapStartX = g_menuX;
-    g_snapStartY = g_menuY;
-    g_snapStartTick = GetTickCount64();
+    // 曲线吸附（ease-out cubic + 二次贝塞尔路径，200ms）
+    SetupSnapPath(g_menuX, g_menuY, g_snapTargetX, g_snapTargetY);
     g_snapAnimating = true;
     g_snapToHide = false;
     g_menuHidden = false;
@@ -299,9 +324,7 @@ void HideMenuToEdge()
     }
 
     Diag("menu hide animate: edge=%d from=%d,%d to=%d,%d", g_menuEdge, g_menuX, g_menuY, g_snapTargetX, g_snapTargetY);
-    g_snapStartX = g_menuX;
-    g_snapStartY = g_menuY;
-    g_snapStartTick = GetTickCount64();
+    SetupSnapPath(g_menuX, g_menuY, g_snapTargetX, g_snapTargetY);
     g_snapToHide = true;
     g_snapAnimating = true;
     SetTimer(g_win, kMenuTimerId, 16, nullptr);
@@ -723,8 +746,12 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
                 const double inv = 1.0 - t;
                 const double ease = 1.0 - inv * inv * inv;   // ease-out cubic
 
-                g_menuX = g_snapStartX + (int)((g_snapTargetX - g_snapStartX) * ease);
-                g_menuY = g_snapStartY + (int)((g_snapTargetY - g_snapStartY) * ease);
+                // 二次贝塞尔：P0 -> 控制点 -> P2（弧线路径）
+                const double b0 = (1.0 - ease) * (1.0 - ease);
+                const double b1 = 2.0 * (1.0 - ease) * ease;
+                const double b2 = ease * ease;
+                g_menuX = (int)(b0 * g_snapStartX + b1 * g_snapCtrlX + b2 * g_snapTargetX);
+                g_menuY = (int)(b0 * g_snapStartY + b1 * g_snapCtrlY + b2 * g_snapTargetY);
 
                 if (t >= 1.0)
                 {
