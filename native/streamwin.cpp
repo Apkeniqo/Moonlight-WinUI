@@ -51,32 +51,32 @@ bool g_snapToHide = false;                   // 当前吸附动画的目标是"�
 int g_snapStartX = 0, g_snapStartY = 0;       // 动画起点
 int g_snapCtrlX = 0, g_snapCtrlY = 0;         // 二次贝塞尔控制点（曲线路径）
 ULONGLONG g_snapStartTick = 0;                // 动画开始时刻
-const int kSnapDurationMs = 200;              // 吸附时长
+const int kSnapDurationMs = 170;              // 吸附时长
 
-// 由起点/终点算控制点：中点 + 垂直方向的偏移（走弧线而不是直线）
+extern int g_menuEdge;   // 定义在下面（贴着哪条边）
+
+// 由起点/终点算控制点。
+// 终点切向由「控制点 -> 终点」决定：让控制点和终点在贴边方向对齐，
+// 这样动画是沿边滑进去的，而不是垂直撞到边上。
 void SetupSnapPath(int fromX, int fromY, int toX, int toY)
 {
     g_snapStartX = fromX;
     g_snapStartY = fromY;
     g_snapStartTick = GetTickCount64();
 
-    const double dx = (double)(toX - fromX);
-    const double dy = (double)(toY - fromY);
-    const double dist = sqrt(dx * dx + dy * dy);
-    if (dist < 1.0)
+    // g_menuEdge: 0右 1左 2上 3下
+    if (g_menuEdge == 0 || g_menuEdge == 1)
     {
+        // 贴左右边：终点切向竖直 → 控制点与终点同 X，起点 Y
         g_snapCtrlX = toX;
-        g_snapCtrlY = toY;
-        return;
+        g_snapCtrlY = fromY;
     }
-
-    // 法线方向（逆时针），弯曲量 = 距离的 25%
-    const double nx = -dy / dist;
-    const double ny = dx / dist;
-    const double bulge = dist * 0.25;
-
-    g_snapCtrlX = (int)(fromX + dx * 0.5 + nx * bulge);
-    g_snapCtrlY = (int)(fromY + dy * 0.5 + ny * bulge);
+    else
+    {
+        // 贴上下边：终点切向水平 → 控制点与终点同 Y，起点 X
+        g_snapCtrlX = fromX;
+        g_snapCtrlY = toY;
+    }
 }
 int  g_menuEdge = 0;                         // 0右 1左 2上 3下
 ULONGLONG g_menuLastActive = 0;              // 最后一次悬停/拖动时间
