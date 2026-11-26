@@ -70,6 +70,8 @@ public sealed partial class MainWindow : Window
         // 单行卡片的两侧渐隐：滚动/改尺寸时重算每张卡的透明度
         AppScroll.ViewChanged += (_, _) => UpdateEdgeFade();
         AppScroll.SizeChanged += (_, _) => UpdateAppCardSize();
+        // 设备卡片重排动画：窗口尺寸变化后让卡片"滑"到新位置
+        DeviceList.SizeChanged += (_, _) => AnimateHostCards();
         HostPage.SizeChanged += (_, _) => UpdateAppCardSize();
         AppScroll.SizeChanged += (_, _) => UpdateEdgeFade();
 
@@ -161,6 +163,57 @@ public sealed partial class MainWindow : Window
         }
 
         _ = RefreshHostStatusAsync();
+        AnimateHostCards();   // 先把每张卡片的位置记下来，窗口 resize 时才能算出位移
+    }
+
+    /// <summary>设备卡片重排时缓存位置（key 是卡片元素本身）。</summary>
+    private readonly Dictionary<FrameworkElement, Windows.Foundation.Point> _hostCardPos = new();
+
+    /// <summary>
+    /// 窗口尺寸变化后设备卡片会重新换行：这里把每张卡片从"旧位置"滑到"新位置"，
+    /// 而不是瞬间跳过去。布局完成后再算（低优先级排队），避免读到半成品布局。
+    /// </summary>
+    private void AnimateHostCards()
+    {
+        DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
+        {
+            try
+            {
+                foreach (var card in DeviceList.Items.OfType<FrameworkElement>())
+                {
+                    var now = card.TransformToVisual(DeviceList)
+                        .TransformPoint(new Windows.Foundation.Point(0, 0));
+
+                    if (_hostCardPos.TryGetValue(card, out var old))
+                    {
+                        var dx = old.X - now.X;
+                        var dy = old.Y - now.Y;
+                        if (Math.Abs(dx) > 0.5 || Math.Abs(dy) > 0.5)
+                        {
+                            AnimateHostCardTo(card, dx, dy);
+                        }
+                    }
+
+                    _hostCardPos[card] = now;
+                }
+            }
+            catch
+            {
+                // 重排动画失败无所谓，别影响布局
+            }
+        });
+    }
+
+    private static void AnimateHostCardTo(FrameworkElement card, double dx, double dy)
+    {
+        var visual = ElementCompositionPreview.GetElementVisual(card);
+        var compositor = visual.Compositor;
+        var anim = compositor.CreateVector3KeyFrameAnimation();
+        anim.InsertKeyFrame(0f, new Vector3((float)dx, (float)dy, 0f));
+        anim.InsertKeyFrame(1f, Vector3.Zero);
+        anim.Duration = TimeSpan.FromMilliseconds(160);
+        anim.StopBehavior = AnimationStopBehavior.SetToFinalValue;
+        visual.StartAnimation("Translation", anim);
     }
 
     /// <summary>电脑页的「刷新」按钮：重新探测所有主机的在线状态（探测期间转圈并禁用按钮）。</summary>
