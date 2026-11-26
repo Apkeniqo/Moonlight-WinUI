@@ -753,7 +753,7 @@ public sealed partial class StreamWindow : Window
         if (_useChildVideo)
         {
             _video?.ShowChildVideo(true);
-            _video?.SetHudVisible(true);
+            _video?.SetHudVisible(_settings.ShowPerformanceOverlay);
         }
         SchedulePeek();
     }
@@ -1077,7 +1077,8 @@ public sealed partial class StreamWindow : Window
                 if ((_settings.OverlayItems & 16) != 0) { lines.Add($"丢包：{p.LossPercent:F1}%"); }
                 if ((_settings.OverlayItems & 32) != 0) { lines.Add($"{p.BitrateKbps / 1000.0:F1} Mbps"); }
 
-                _video.PerfUpdate(lines.ToArray(), single);
+                // 性能信息改为画在视频画面上（HUD），不再用独立置顶卡片
+                _video.PerfUpdate(Array.Empty<string>(), true);
             }
             catch
             {
@@ -2001,7 +2002,11 @@ public sealed partial class StreamWindow : Window
         // 子窗口（原生弹窗）模式：HUD 画在视频上
         if (_useChildVideo && _video is not null)
         {
-            var text = $"{p.Fps:F0} fps   {decoder}   {p.EncodeMs:F1}/{p.DecodeMs:F1} ms   网络 {p.RttMs:F1} ms   丢包 {p.LossPercent:F1}%   {p.BitrateKbps / 1000.0:F1} Mbps";
+            _video.RefreshStreamSize();
+            var hudRes = _video.StreamWidth > 0 && _video.StreamHeight > 0
+                ? $"{_video.StreamWidth}×{_video.StreamHeight}"
+                : $"{_settings.Width}×{_settings.Height}";
+            var text = $"{hudRes}   {p.Fps:F0} fps   {decoder}   {p.EncodeMs:F1}/{p.DecodeMs:F1} ms   网络 {p.RttMs:F1} ms   丢包 {p.LossPercent:F1}%   {p.BitrateKbps / 1000.0:F1} Mbps";
             // HUD 坐标用「视频窗口像素」，不是流的像素（否则齿轮会被算到窗口外面）
             var hudScale = VideoHost.XamlRoot?.RasterizationScale ?? 1.0;
             var w = Math.Max(200, (int)Math.Round(VideoHost.ActualWidth * hudScale));

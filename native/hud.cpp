@@ -414,11 +414,11 @@ extern "C" __declspec(dllexport) void HudSetOwner(void* videoHwnd)
 
 extern "C" __declspec(dllexport) void HudSetText(const wchar_t* text, float opacity, float x, float y)
 {
-    // 旧的性能条已下线（改为原生性能卡片，稍后接入），这里先清空文字避免残留
-    (void)opacity;
-    (void)x;
-    (void)y;
-    g_hud.text = text ? L"" : L"";
+    // 性能信息直接画在视频画面上（不再用独立的置顶窗口）
+    g_hud.text = text ? text : L"";
+    g_hud.opacity = opacity;
+    g_hud.x = (int)x;
+    g_hud.y = (int)y;
 }
 
 // 齿轮模块已停用：保留导出仅为兼容旧调用，内部一切置为不可见

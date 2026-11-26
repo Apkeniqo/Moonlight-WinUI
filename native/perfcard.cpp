@@ -352,6 +352,11 @@ extern "C" __declspec(dllexport) void PERF_Update(const wchar_t* const* lines, i
     }
 
     g_single = singleLine ? 1 : 0;
+    if (g_lines.empty())
+    {
+        if (g_card) { ShowWindow(g_card, SW_HIDE); }
+        return;
+    }
     Redraw();
 }
 
