@@ -63,6 +63,9 @@ public sealed class StreamSettings
     /// <summary>Qt: quitAppAfter —— 串流结束后退出应用。</summary>
     public bool QuitAfterStream { get; set; }
 
+    /// <summary>是否记录诊断日志（app.log / childdiag.log / native diag）。关掉可减少磁盘写入。</summary>
+    public bool EnableLogging { get; set; } = true;
+
     /// <summary>
     /// Qt: absoluteMouseMode —— 真：发绝对坐标（光标和主机严格同步、不受主机指针加速影响）；
     /// 关：发相对增量（少数游戏需要）。

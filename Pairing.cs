@@ -27,7 +27,9 @@ internal static class Pairing
 {
     public sealed record Result(bool Success, string Message, string? ServerCertPem);
 
-    private const string DeviceName = "MoonlightWinUI";
+    // 配对时告诉主机的客户端名：用本机主机名，主机端列表里能直接认出是哪台电脑
+    private static string DeviceName =>
+        string.IsNullOrWhiteSpace(Environment.MachineName) ? "Moonlight" : Environment.MachineName;
     private const int ShortTimeoutMs = 10_000;
 
     /// <summary>完整配对流程。host 可以是主机名或 IP；httpPort 是主机的 HTTP 端口（默认 47989，HTTPS 取 -5）。</summary>

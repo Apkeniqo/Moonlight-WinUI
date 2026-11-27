@@ -276,7 +276,7 @@ internal static class HostApi
             var uniqueId = File.Exists(uidPath) ? File.ReadAllText(uidPath).Trim() : "5325b8a3fdd68731";
             var query = $"uniqueid={Uri.EscapeDataString(uniqueId)}&uuid={Uri.EscapeDataString(uniqueId)}";
 
-            return NativeTls.TryGet(host, httpsPort, "/cancel?" + query + "&clientname=MoonlightWinUI",
+            return NativeTls.TryGet(host, httpsPort, "/cancel?" + query + "&clientname=" + Uri.EscapeDataString(Environment.MachineName),
                 certPath, keyPath, out _, out _);
         }
         catch
@@ -357,7 +357,8 @@ internal static class HostApi
                     app.Element("AppTitle")?.Value ?? "(未命名)",
                     int.TryParse(app.Element("IsHdrSupported")?.Value, out var hdr) && hdr != 0))
                 .Where(app => app.Id > 0)
-                .OrderBy(app => app.Title, StringComparer.OrdinalIgnoreCase)
+                // 保持主机返回的顺序：Sunshine 里应用可以拖拽排序，
+                // 客户端再按名称排会和主机面板不一致
                 .ToList();
 
             // 主机当前在跑哪个应用：/serverinfo 里的 currentgame（空闲时是 0）。

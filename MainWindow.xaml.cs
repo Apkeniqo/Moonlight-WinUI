@@ -124,6 +124,8 @@ public sealed partial class MainWindow : Window
         // 串流中关闭主窗口 = 退出串流，先确认一下
         AppWindow.Closing += MainWindow_Closing;
 
+        InitSettingsSmoothScroll();
+
         // AppWindow.Resize 收的是物理像素；按工作区留边，别超过屏幕
         RootGrid.Loaded += (_, _) =>
         {
@@ -1183,6 +1185,8 @@ public sealed partial class MainWindow : Window
         OverlayPositionBox.SelectedIndex = Math.Clamp(_settings.OverlayPosition, 0, 5);
         KeepAwakeSwitch.IsOn = _settings.KeepAwake;
         QuitAfterSwitch.IsOn = _settings.QuitAfterStream;
+        EnableLoggingSwitch.IsOn = _settings.EnableLogging;
+        LoggingEnabled = _settings.EnableLogging;
         SettingsPathText.Text = "配置文件：" + StreamSettings.FilePath;
         UpdateBitrateText();
 
@@ -1455,6 +1459,18 @@ public sealed partial class MainWindow : Window
         PersistSettings(QuitAfterSwitch.IsOn ? "串流结束后退出应用：开" : "串流结束后退出应用：关");
     }
 
+    private void EnableLoggingSwitch_Toggled(object sender, RoutedEventArgs e)
+    {
+        if (!_settingsReady)
+        {
+            return;
+        }
+
+        _settings.EnableLogging = EnableLoggingSwitch.IsOn;
+        LoggingEnabled = EnableLoggingSwitch.IsOn;
+        PersistSettings(EnableLoggingSwitch.IsOn ? "诊断日志：开" : "诊断日志：关");
+    }
+
     private void UpdateBitrateText()
     {
         if (BitrateText is not null)
@@ -1615,27 +1631,29 @@ public sealed partial class MainWindow : Window
                 ipBox.IsEnabled = false;
                 portBox.IsEnabled = false;
 
-                // 换 IP 的话主机还是那一台：先拿 hostname 看本地列表里是不是已经有它，
-                // 有就直接把地址换成新的（不需要重新配对）。
-                // /serverinfo 的 PairStatus 不能当判据 —— 它是按 uniqueid 判的，
-                // uid 与主机记录的 uuid 不一致时会返回 0，但证书其实一直被接受。
-                status.Text = "正在检查这台电脑是否添加过…";
-                var knownName = await HostApi.GetHostnameAsync(host, port);
-                var alreadyKnown =
-                    (!string.IsNullOrWhiteSpace(knownName) &&
-                     _hosts.Any(h => string.Equals(h.Name, knownName, StringComparison.OrdinalIgnoreCase))) ||
-                    _hosts.Any(h => string.Equals(h.Address, host, StringComparison.OrdinalIgnoreCase)) ||
-                    await HostApi.IsPairedAsync(host, port);
+                // 只有主机真的接受我们的客户端证书，才算"已配对"。
+                // 不能只看本地列表里有没有这台电脑：主机端取消配对后记录仍在，
+                // 那样会一直判定"已添加过"而跳过配对，导致再也连不上（死循环）。
+                status.Text = "正在检查配对状态…";
+                var alreadyPaired = await HostApi.IsPairedAsync(host, port);
 
-                if (alreadyKnown)
+                if (alreadyPaired)
                 {
-                    status.Text = $"这台电脑已经在列表里，直接把地址换成 {host}（不需要重新配对）";
+                    status.Text = "这台电脑已经配过对，直接更新地址即可。";
                     succeeded = true;
                 }
                 else
                 {
+                    var knownName = await HostApi.GetHostnameAsync(host, port);
+                    var inList =
+                        (!string.IsNullOrWhiteSpace(knownName) &&
+                         _hosts.Any(h => string.Equals(h.Name, knownName, StringComparison.OrdinalIgnoreCase))) ||
+                        _hosts.Any(h => string.Equals(h.Address, host, StringComparison.OrdinalIgnoreCase));
+
                     var pin = RandomNumberGenerator.GetInt32(0, 10000).ToString("D4");
-                    status.Text = $"PIN {pin} —— 请在 https://{host}:{port + 1} 的 PIN 页输入并确认…";
+                    status.Text = inList
+                        ? $"这台电脑在列表里但未配对（可能主机端取消过配对）。PIN {pin} —— 请在 https://{host}:{port + 1} 的 PIN 页输入并确认…"
+                        : $"PIN {pin} —— 请在 https://{host}:{port + 1} 的 PIN 页输入并确认…";
 
                     var (success, message) = await RunPairingAsync(host, pin, port);
                     status.Text = success ? $"配对成功：{host}" : $"配对失败：{message}";
@@ -1868,6 +1886,31 @@ public sealed partial class MainWindow : Window
         {
             LogDiag($"AnimatePageIn failed: {ex.Message}");
         }
+
+        // 兜底：动画若被中途打断，Translation/Opacity 会留在半路，
+        // 页面看起来像被拽偏 / 滚动时"弹回"。等动画时长过去后强制归位。
+        _ = ResetPageVisualAsync(page);
+    }
+
+    private async Task ResetPageVisualAsync(FrameworkElement page)
+    {
+        try
+        {
+            await Task.Delay(400);
+            if (!ReferenceEquals(page, _activePage))
+            {
+                return;
+            }
+
+            var visual = ElementCompositionPreview.GetElementVisual(page);
+            visual.StopAnimation("Opacity");
+            visual.Opacity = 1f;
+            visual.StopAnimation("Translation");
+            visual.Properties.InsertVector3("Translation", Vector3.Zero);
+        }
+        catch
+        {
+        }
     }
 
     /// <summary>窗口激活时把当前页透明度归位（防止动画被打断后页面透明）。</summary>
@@ -1944,6 +1987,11 @@ public sealed partial class MainWindow : Window
     /// <summary>诊断日志：写到 %LOCALAPPDATA%\MoonlightForPC\app.log（安装目录可能不可写）。</summary>
     private static void LogDiag(string message)
     {
+        if (!LoggingEnabled)
+        {
+            return;
+        }
+
         try
         {
             var dir = System.IO.Path.Combine(
@@ -1955,6 +2003,127 @@ public sealed partial class MainWindow : Window
                 $"{DateTime.Now:HH:mm:ss.fff} {message}{Environment.NewLine}");
         }
         catch { }
+    }
+
+    /// <summary>设置页开关控制的日志总开关（主窗口与串流窗口共享）。</summary>
+    internal static bool LoggingEnabled { get; set; } = true;
+
+    // ---------------- 设置页平滑滚动（Composition 动画 + 惯性） ----------------
+    private double _settingsTargetOffset;
+    private double _settingsAnimOffset;
+    private long _lastWheelTick;
+    private double _wheelVelocity;          // px/ms，正值=向下滚（内容上移）
+    private DispatcherTimer? _wheelStopTimer;
+
+    private void InitSettingsSmoothScroll()
+    {
+        ElementCompositionPreview.SetIsTranslationEnabled(SettingsPage, true);
+
+        // 滚轮停下 45ms 后按最后速度补一段惯性（太短会误触发、太长会先顿一下）
+        _wheelStopTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(45) };
+        _wheelStopTimer.Tick += (_, _) =>
+        {
+            _wheelStopTimer?.Stop();
+            ApplyScrollInertia();
+        };
+    }
+
+    private void SettingsHost_PointerWheelChanged(object sender, PointerRoutedEventArgs e)
+    {
+        var delta = e.GetCurrentPoint(SettingsHost).Properties.MouseWheelDelta;
+        if (delta == 0)
+        {
+            return;
+        }
+
+        var now = Environment.TickCount64;
+        var dt = Math.Max(8.0, now - _lastWheelTick);
+        _lastWheelTick = now;
+
+        // 每格滚 delta*0.55（约 66px），并记录速度用于惯性
+        var step = delta * 0.55;
+        _wheelVelocity = -step / dt;          // 内容位移方向：向上滚时为负
+
+        var max = Math.Max(0, SettingsPage.ActualHeight - SettingsHost.ActualHeight);
+        _settingsTargetOffset = Math.Clamp(_settingsTargetOffset - step, 0, max);
+        e.Handled = true;
+
+        StartSettingsScrollAnimation();
+
+        _wheelStopTimer?.Stop();
+        _wheelStopTimer?.Start();
+    }
+
+    /// <summary>滚轮停止后按最后速度继续滑动一小段，并逐渐减速（惯性）。</summary>
+    private void ApplyScrollInertia()
+    {
+        if (SettingsHost.Visibility != Visibility.Visible)
+        {
+            return;
+        }
+
+        if (Math.Abs(_wheelVelocity) < 0.25)
+        {
+            return;   // 滚得太慢，不需要惯性
+        }
+
+        var max = Math.Max(0, SettingsPage.ActualHeight - SettingsHost.ActualHeight);
+
+        // 惯性距离按速度算，但夹住速度和总距离：之前速度×260 能到上千像素，
+        // 停下后突然冲出去再减速，看着像"加速后急停"。
+        var speed = Math.Clamp(_wheelVelocity, -1.2, 1.2);   // px/ms
+        var glide = Math.Clamp(speed * 190.0, -270.0, 270.0);
+        var target = Math.Clamp(_settingsTargetOffset + glide, 0, max);
+
+        if (Math.Abs(target - _settingsTargetOffset) < 1.0)
+        {
+            return;
+        }
+
+        _settingsTargetOffset = target;
+        StartSettingsScrollAnimation(inertia: true);
+    }
+
+    /// <summary>
+    /// 用合成动画从当前位移过渡到目标位移：由合成线程驱动，60fps+，
+    /// 不走 UI 线程定时器（那正是之前"刷新率低"的原因）。
+    /// </summary>
+    private void StartSettingsScrollAnimation(bool inertia = false)
+    {
+        try
+        {
+            var visual = ElementCompositionPreview.GetElementVisual(SettingsPage);
+            var compositor = visual.Compositor;
+
+            var from = _settingsAnimOffset;
+            var to = _settingsTargetOffset;
+            if (Math.Abs(to - from) < 0.5)
+            {
+                return;
+            }
+
+            _settingsAnimOffset = to;
+
+            var easing = compositor.CreateCubicBezierEasingFunction(
+                new Vector2(0.25f, 0.9f),
+                new Vector2(0.3f, 1f));
+
+            // 只给终点关键帧：起点自动取"当前实际位置"，
+            // 连续滚轮时动画被打断也能从半路平滑续上，不会跳
+            var anim = compositor.CreateVector3KeyFrameAnimation();
+            anim.InsertKeyFrame(1f, new Vector3(0f, (float)-to, 0f), easing);
+
+            var distance = Math.Abs(to - from);
+            anim.Duration = inertia
+                ? TimeSpan.FromMilliseconds(Math.Clamp(280 + distance * 1.2, 280, 560))
+                : TimeSpan.FromMilliseconds(Math.Clamp(170 + distance * 0.5, 170, 280));
+
+            visual.StartAnimation("Translation", anim);
+        }
+        catch (Exception ex)
+        {
+            LogDiag($"settings scroll anim failed: {ex.Message}");
+        }
     }
 
     private void SwitchPage(FrameworkElement? outgoing, FrameworkElement incoming)

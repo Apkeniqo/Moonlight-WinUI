@@ -127,6 +127,12 @@ public sealed class VideoSurface : IDisposable
     /// <summary>标题栏菜单按钮被点击（native 置位），由 C# 带当前设置打开面板。</summary>
     public bool TakePanelOpenRequest() => PNL_TakeOpenRequest() != 0;
 
+    /// <summary>是否记录原生层诊断日志（decoder.log 等）。</summary>
+    [DllImport(NativeDll, CallingConvention = CallingConvention.Cdecl)]
+    private static extern void SUI_SetLoggingEnabled(int enabled);
+
+    public void SetLoggingEnabled(bool enabled) => SUI_SetLoggingEnabled(enabled ? 1 : 0);
+
     [DllImport(NativeDll, CallingConvention = CallingConvention.Cdecl)]
     private static extern IntPtr SUI_GetHwnd();
 

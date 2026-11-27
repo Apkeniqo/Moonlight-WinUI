@@ -765,7 +765,7 @@ public sealed partial class StreamWindow : Window
             var baseDir = AppContext.BaseDirectory;
             var ok = NativeTls.TryGet(
                 _host, 47984,
-                $"/bitrate?bitrate={kbps}&clientname=MoonlightWinUI",
+                $"/bitrate?bitrate={kbps}&clientname={Uri.EscapeDataString(Environment.MachineName)}",
                 System.IO.Path.Combine(baseDir, "creds", "client.crt"),
                 System.IO.Path.Combine(baseDir, "creds", "client.key"),
                 out var body, out var error);
@@ -1816,6 +1816,11 @@ public sealed partial class StreamWindow : Window
 
     private static void ChildDiag(string text)
     {
+        if (!MainWindow.LoggingEnabled)
+        {
+            return;
+        }
+
         try
         {
             var dir = System.IO.Path.Combine(
@@ -1857,6 +1862,7 @@ public sealed partial class StreamWindow : Window
             if (rc2 == 0)
             {
                 _video.SetBackdrop(_settings.BackdropKind);   // 串流窗口材质跟主窗口一致
+                _video.SetLoggingEnabled(MainWindow.LoggingEnabled);   // 跟随设置页的诊断日志开关
                 _video.SetMoveCallback(RepositionPanelNow);   // 窗口一移动就实时挪面板
                 StartPerfCard();   // 性能信息卡片（原生分层窗口，设置里可配位置/项目）
             }
