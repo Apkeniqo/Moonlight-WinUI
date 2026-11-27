@@ -1957,7 +1957,8 @@ public sealed partial class StreamWindow : Window
             try
             {
                 var (state, stage) = _video.StreamStatus();
-                if (!string.IsNullOrWhiteSpace(stage))
+                // 只显示"正在建立"阶段的真实进度；idle/stopped 之类的占位不要刷到遮罩上
+                if (state == 1 && !string.IsNullOrWhiteSpace(stage) && stage != "idle")
                 {
                     _video.SetWindowStatus(stage);
                 }

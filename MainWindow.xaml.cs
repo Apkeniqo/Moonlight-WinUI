@@ -29,6 +29,7 @@ namespace MoonlightWinUI;
 public sealed partial class MainWindow : Window
 {
     private StreamWindow? _streamWindow;
+    private bool _closeConfirmed;
     private (string Host, bool Demo, int AppId, string? AppTitle)? _pendingOpen;
     private string? _currentHost;
     private int _currentHostPort = 47984;
@@ -119,6 +120,9 @@ public sealed partial class MainWindow : Window
             }
         }
         catch { }
+
+        // 串流中关闭主窗口 = 退出串流，先确认一下
+        AppWindow.Closing += MainWindow_Closing;
 
         // AppWindow.Resize 收的是物理像素；按工作区留边，别超过屏幕
         RootGrid.Loaded += (_, _) =>
@@ -1969,6 +1973,50 @@ public sealed partial class MainWindow : Window
         incoming.Visibility = Visibility.Visible;
         AnimatePageIn(incoming);
     }
+    /// <summary>串流中关闭主窗口：提示会退出串流。</summary>
+    private async void MainWindow_Closing(AppWindow sender, AppWindowClosingEventArgs args)
+    {
+        if (_streamWindow is null || _closeConfirmed)
+        {
+            return;
+        }
+
+        args.Cancel = true;
+
+        try
+        {
+            var dialog = new ContentDialog
+            {
+                Title = "关闭窗口会退出串流",
+                Content = new TextBlock
+                {
+                    Text = "当前正在串流。关闭主窗口会同时结束串流并退出应用。",
+                    TextWrapping = TextWrapping.Wrap,
+                },
+                PrimaryButtonText = "关闭窗口并退出",
+                CloseButtonText = "继续串流",
+                DefaultButton = ContentDialogButton.Close,
+                XamlRoot = RootGrid.XamlRoot,
+            };
+
+            if (await dialog.ShowAsync() != ContentDialogResult.Primary)
+            {
+                return;
+            }
+        }
+        catch
+        {
+            return;
+        }
+
+        _closeConfirmed = true;
+
+        try { _streamWindow?.Close(); } catch { }
+
+        // 再次触发 Closing，这会儿直接放行
+        DispatcherQueue.TryEnqueue(() => Close());
+    }
+
     private void Nav_SelectionChanged(NavigationView sender, NavigationViewSelectionChangedEventArgs args)
     {
         var tag = args.IsSettingsSelected
