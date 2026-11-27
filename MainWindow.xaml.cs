@@ -30,6 +30,7 @@ public sealed partial class MainWindow : Window
 {
     private StreamWindow? _streamWindow;
     private bool _closeConfirmed;
+    private long _splashShownMs;
     private (string Host, bool Demo, int AppId, string? AppTitle)? _pendingOpen;
     private string? _currentHost;
     private int _currentHostPort = 47984;
@@ -90,6 +91,7 @@ public sealed partial class MainWindow : Window
                     sb.Completed += (_, _) => SplashOverlay.Visibility = Visibility.Collapsed;
                     sb.Begin();
                 };
+                _splashShownMs = Environment.TickCount64;
             }
             else
             {
@@ -1918,8 +1920,11 @@ public sealed partial class MainWindow : Window
     {
         try
         {
-            // 开屏遮罩如果因为动画被中断没来得及收起，会整窗盖住所有内容
-            if (SplashOverlay.Visibility == Visibility.Visible)
+            // 开屏遮罩如果因为动画被中断没来得及收起，会整窗盖住所有内容。
+            // 但启动前 1 秒内不要动它，否则会把正在播放的开屏动画直接掐掉。
+            if (_splashShownMs > 0 &&
+                Environment.TickCount64 - _splashShownMs > 1200 &&
+                SplashOverlay.Visibility == Visibility.Visible)
             {
                 SplashOverlay.Visibility = Visibility.Collapsed;
                 LogDiag("splash overlay force-collapsed");
