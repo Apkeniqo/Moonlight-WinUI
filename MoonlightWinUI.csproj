@@ -63,6 +63,10 @@
     <Content Include="tools\assets\app.png" Link="app.png">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
+    <!-- Win11 开机转圈字体（U+E100..U+E176 逐帧字形），native 遮罩转圈用 -->
+    <Content Include="tools\assets\segoe_slboot.ttf" Link="segoe_slboot.ttf">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
   </ItemGroup>
 
   <!-- 原生解码/上屏 DLL + FFmpeg 运行时 + 测试片源 -->

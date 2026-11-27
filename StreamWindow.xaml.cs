@@ -76,6 +76,39 @@ public sealed partial class StreamWindow : Window
         SystemBackdrop = new MicaBackdrop();
         ExtendsContentIntoTitleBar = true;
         SetTitleBar(AppTitleBar);
+
+        // 窗口图标：AppWindow 的图标（任务栏/Alt-Tab）+ 标题栏 Image 都要设，
+        // 否则串流窗口会显示 Windows 默认图标
+        try
+        {
+            var icoPath = System.IO.Path.Combine(AppContext.BaseDirectory, "app.ico");
+            var icoExists = System.IO.File.Exists(icoPath);
+            if (icoExists)
+            {
+                AppWindow.SetIcon(icoPath);
+            }
+            ChildDiag($"SetIcon: exists={icoExists} path={icoPath}");
+        }
+        catch (Exception ex)
+        {
+            ChildDiag($"SetIcon failed: {ex.Message}");
+        }
+
+        try
+        {
+            var pngPath = System.IO.Path.Combine(AppContext.BaseDirectory, "app.png");
+            var pngExists = System.IO.File.Exists(pngPath);
+            if (pngExists)
+            {
+                TitleIcon.Source = new Microsoft.UI.Xaml.Media.Imaging.BitmapImage(new Uri(pngPath));
+            }
+            ChildDiag($"TitleIcon: exists={pngExists} srcNull={TitleIcon.Source is null} path={pngPath}");
+        }
+        catch (Exception ex)
+        {
+            ChildDiag($"TitleIcon failed: {ex.Message}");
+        }
+
         UpdateTitle();
 
         RootGrid.Loaded += (_, _) =>
@@ -215,6 +248,7 @@ public sealed partial class StreamWindow : Window
             // "退出串流 / 退出并结束串流"必现就是这个原因。
             _perfCardTimer?.Stop();
             _connectTimeoutTimer?.Stop();
+            _stageTimer?.Stop();
             _peekTimer.Stop();
             StreamSettings.Saved -= OnSettingsSaved;
             _renderWatchdog?.Stop();
@@ -530,7 +564,7 @@ public sealed partial class StreamWindow : Window
     private bool _reconnecting;
     private bool _wasConnected;
     private bool _gaveUpReconnect;
-    private const int MaxReconnectAttempts = 3;
+    private const int MaxReconnectAttempts = 5;
 
     private DispatcherTimer? _panelFollowTimer;   // 面板打开期间跟随串流窗口移动
     private int _panelW, _panelH;                 // 面板打开时的尺寸（跟随重定位要复用）
@@ -1377,7 +1411,15 @@ public sealed partial class StreamWindow : Window
             if (_wasConnected && _reconnectAttempts > 0)
             {
                 ChildDiag("reconnect: 已恢复连接");
-                StreamText.Text = "已重新连接";
+
+                ShowReconnectOverlay("已重新连接", "画面即将恢复");
+                HideStatus();
+                ReconnectRing.IsActive = false;
+                var hideTimer = DispatcherQueue.CreateTimer();
+                hideTimer.Interval = TimeSpan.FromSeconds(1.2);
+                hideTimer.IsRepeating = false;
+                hideTimer.Tick += (_, _) => HideReconnectOverlay();
+                hideTimer.Start();
             }
 
             _wasConnected = true;
@@ -1406,6 +1448,7 @@ public sealed partial class StreamWindow : Window
                 var message = $"与 {host} 的连接已中断，自动重连 {MaxReconnectAttempts} 次仍未成功，串流已结束。\n"
                             + "请检查主机是否退出 Sunshine、网络是否可达，然后重新连接。";
 
+                HideReconnectOverlay();
                 try { Close(); } catch { }
                 var main = MainWindow.Instance;
                 if (main is not null)
@@ -1415,8 +1458,25 @@ public sealed partial class StreamWindow : Window
                 return;
             }
 
-            ShowStatus($"连接中断，正在重连（{_reconnectAttempts}/{MaxReconnectAttempts}）…");
-            _video.StopStream();
+            // 只用整屏遮罩提示，别再叠一个 StatusOverlay 小卡片
+            ShowReconnectOverlay(
+                $"连接中断，正在重新连接…（{_reconnectAttempts}/{MaxReconnectAttempts}）",
+                string.Empty);
+
+            // 主机重启/断网时 StopStream 会等 TCP 超时，放后台线程，别卡住 UI
+            var videoForStop = _video;
+            if (videoForStop is not null)
+            {
+                try
+                {
+                    await System.Threading.Tasks.Task.Run(() => videoForStop.StopStream());
+                }
+                catch (Exception ex)
+                {
+                    ChildDiag($"reconnect: StopStream 异常 {ex.Message}");
+                }
+            }
+
             await System.Threading.Tasks.Task.Delay(1200);
 
             if (_closed || _video is null)
@@ -1424,9 +1484,17 @@ public sealed partial class StreamWindow : Window
                 return;
             }
 
-            var rc = _video.StartStream(
-                _host, _settings.Width, _settings.Height, _settings.Fps, _settings.BitrateKbps,
-                _appId, _settings.Codec);
+            // 同理：StartStream 会等主机握手，主机重启期间可能卡很久
+            var videoForStart = _video;
+            if (videoForStart is null)
+            {
+                return;
+            }
+
+            var settings = _settings;
+            var rc = await System.Threading.Tasks.Task.Run(() => videoForStart.StartStream(
+                _host, settings.Width, settings.Height, settings.Fps, settings.BitrateKbps,
+                _appId, settings.Codec));
 
             ChildDiag($"reconnect: StartStream rc={rc}");
 
@@ -1750,9 +1818,13 @@ public sealed partial class StreamWindow : Window
     {
         try
         {
+            var dir = System.IO.Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "MoonlightForPC");
+            System.IO.Directory.CreateDirectory(dir);
             System.IO.File.AppendAllText(
-                System.IO.Path.Combine(AppContext.BaseDirectory, "childdiag.log"),
-                $"{DateTime.Now:HH:mm:ss.fff} {text}\n");
+                System.IO.Path.Combine(dir, "childdiag.log"),
+                $"{DateTime.Now:HH:mm:ss.fff} {text}{Environment.NewLine}");
         }
         catch
         {
@@ -1793,6 +1865,7 @@ public sealed partial class StreamWindow : Window
             {
                 _childVideoCreated = true;
                 AppWindow.Hide();          // 串流窗口改成纯 Win32，WinUI 窗口收起来
+                ApplyStreamWindowIcon();   // 原生窗口的图标
                 StartChildStream();
             }
             else
@@ -1836,6 +1909,7 @@ public sealed partial class StreamWindow : Window
 
     /// <summary>连接步骤文字：直接画在 HUD 层（视频之上），居中出现。</summary>
     private DispatcherTimer? _connectTimeoutTimer;
+    private DispatcherTimer? _stageTimer;
 
     /// <summary>连接超时：到点还没首帧就提示并关掉串流窗口。</summary>
     private void StartConnectTimeout()
@@ -1860,6 +1934,46 @@ public sealed partial class StreamWindow : Window
             Close();
         };
         _connectTimeoutTimer.Start();
+    }
+
+    /// <summary>连接建立期间轮询 native 阶段（RTSP 握手/控制流/视频流…）并显示在遮罩上。</summary>
+    private void StartStagePolling()
+    {
+        if (!_useWin32Stream)
+        {
+            return;
+        }
+
+        _stageTimer?.Stop();
+        _stageTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(200) };
+        _stageTimer.Tick += (_, _) =>
+        {
+            if (_closed || _video is null)
+            {
+                _stageTimer?.Stop();
+                return;
+            }
+
+            try
+            {
+                var (state, stage) = _video.StreamStatus();
+                if (!string.IsNullOrWhiteSpace(stage))
+                {
+                    _video.SetWindowStatus(stage);
+                }
+
+                // 2 = 串流中，-1 = 失败：都不用再轮询
+                if (state == 2 || state == -1)
+                {
+                    _stageTimer?.Stop();
+                }
+            }
+            catch
+            {
+                _stageTimer?.Stop();
+            }
+        };
+        _stageTimer.Start();
     }
     private void StartChildStream()
     {
@@ -1890,6 +2004,7 @@ public sealed partial class StreamWindow : Window
                 ? "正在建立视频会话…"
                 : $"启动失败：MS_Start 返回 {rc}");
             StartConnectTimeout();
+            StartStagePolling();
         }
 
         StreamText.Text = rc == 0
@@ -1995,6 +2110,8 @@ public sealed partial class StreamWindow : Window
             _firstFrameShown = true;
             StartConnectionWatch();   // 首帧之后盯着连接状态，断了自动重连
             _video.SetWindowVideoReady(true);
+            _video.SetWindowStatus(string.Empty);   // 首帧到了，把「正在建立视频会话…」遮罩收掉
+            _stageTimer?.Stop();
             _connectTimeoutTimer?.Stop();
         }
 
@@ -2073,6 +2190,19 @@ public sealed partial class StreamWindow : Window
         if (TitleText is not null)
         {
             TitleText.Text = Title;
+        }
+
+        // 标题栏图标（与主窗口一致）
+        try
+        {
+            var png = System.IO.Path.Combine(AppContext.BaseDirectory, "app.png");
+            if (System.IO.File.Exists(png))
+            {
+                TitleIcon.Source = new Microsoft.UI.Xaml.Media.Imaging.BitmapImage(new Uri(png));
+            }
+        }
+        catch
+        {
         }
     }
 
@@ -2295,6 +2425,147 @@ public sealed partial class StreamWindow : Window
     {
         StatusOverlay.Visibility = Visibility.Collapsed;
         ConnectRing.IsActive = false;
+    }
+
+    [System.Runtime.InteropServices.DllImport("user32.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode)]
+    private static extern IntPtr LoadImageW(IntPtr hinst, string lpszName, uint uType, int cxDesired, int cyDesired, uint fuLoad);
+
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    private static extern IntPtr SendMessageW(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam);
+
+    private const uint IMAGE_ICON = 1;
+    private const uint LR_LOADFROMFILE = 0x10;
+    private const uint LR_DEFAULTSIZE = 0x40;
+    private const uint WM_SETICON = 0x0080;
+
+    /// <summary>给原生串流窗口设置标题栏/任务栏图标（Win32 模式下 AppWindow.SetIcon 不管用）。</summary>
+    private void ApplyStreamWindowIcon()
+    {
+        try
+        {
+            if (_video is null || !_useWin32Stream)
+            {
+                return;
+            }
+
+            var hwnd = _video.StreamWindowHandle;
+            if (hwnd == IntPtr.Zero)
+            {
+                ChildDiag("ApplyStreamWindowIcon: hwnd=0");
+                return;
+            }
+
+            var icoPath = System.IO.Path.Combine(AppContext.BaseDirectory, "app.ico");
+            if (!System.IO.File.Exists(icoPath))
+            {
+                ChildDiag($"ApplyStreamWindowIcon: missing {icoPath}");
+                return;
+            }
+
+            var big = LoadImageW(IntPtr.Zero, icoPath, IMAGE_ICON, 32, 32, LR_LOADFROMFILE);
+            var small = LoadImageW(IntPtr.Zero, icoPath, IMAGE_ICON, 16, 16, LR_LOADFROMFILE);
+            if (big != IntPtr.Zero)
+            {
+                SendMessageW(hwnd, WM_SETICON, (IntPtr)1, big);   // ICON_BIG
+            }
+            if (small != IntPtr.Zero)
+            {
+                SendMessageW(hwnd, WM_SETICON, (IntPtr)0, small); // ICON_SMALL
+            }
+
+            ChildDiag($"ApplyStreamWindowIcon: hwnd=0x{hwnd.ToInt64():X} big={(big != IntPtr.Zero)} small={(small != IntPtr.Zero)}");
+        }
+        catch (Exception ex)
+        {
+            ChildDiag($"ApplyStreamWindowIcon failed: {ex.Message}");
+        }
+    }
+
+    [System.Runtime.InteropServices.DllImport("user32.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode)]
+    private static extern IntPtr FindWindowExW(IntPtr hWndParent, IntPtr hWndChildAfter, string? lpszClass, string? lpszWindow);
+
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    private static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
+
+    private const int SW_HIDE = 0;
+    private const int SW_SHOW = 5;
+
+    /// <summary>
+    /// 视频在独立的 Win32 子窗口里渲染，会盖住 XAML 叠加层。
+    /// 需要显示遮罩/菜单时先把子窗口藏起来。
+    /// </summary>
+    private void SetChildVideoVisible(bool visible)
+    {
+        if (!_useChildVideo)
+        {
+            return;
+        }
+
+        try
+        {
+            var shown = 0;
+            // 视频窗口是主窗口的子窗口，必须先拿到主窗口句柄再往下找
+            var mainHwnd = Win32Interop.GetWindowFromWindowId(AppWindow.Id);
+            foreach (var cls in new[] { "MoonlightChildVideoWin32", "MoonlightChildVideo" })
+            {
+                var hwnd = FindWindowExW(mainHwnd, IntPtr.Zero, cls, null);
+                if (hwnd == IntPtr.Zero)
+                {
+                    continue;
+                }
+
+                ShowWindow(hwnd, visible ? SW_SHOW : SW_HIDE);
+                shown++;
+            }
+
+            ChildDiag($"SetChildVideoVisible({visible}): main=0x{mainHwnd.ToInt64():X} matched={shown}");
+        }
+        catch (Exception ex)
+        {
+            ChildDiag($"SetChildVideoVisible failed: {ex.Message}");
+        }
+    }
+
+    /// <summary>断线重连：整屏遮罩 + 中央显示进度。</summary>
+    private void ShowReconnectOverlay(string text, string subText)
+    {
+        ReconnectText.Text = text;
+        ReconnectSubText.Text = subText;
+        ReconnectRing.IsActive = true;
+        ReconnectOverlay.Visibility = Visibility.Visible;
+
+        ChildDiag($"overlay show: {text} / {subText} vis={ReconnectOverlay.Visibility} win32={_useWin32Stream}");
+
+        if (_useWin32Stream)
+        {
+            // 纯 Win32 串流窗口：用原生 layered 遮罩窗口（SUI_SetStatus），
+            // WinUI 窗口保持隐藏，不会多出一个窗口
+            var nativeText = string.IsNullOrWhiteSpace(subText) ? text : text + "\n" + subText;
+            _video?.SetWindowStatus(nativeText);
+            ChildDiag($"overlay show(native): {nativeText}");
+            return;
+        }
+
+        // XAML 模式：视频子窗口会盖住遮罩，先藏起来
+        SetChildVideoVisible(false);
+    }
+
+    private void HideReconnectOverlay()
+    {
+        ReconnectOverlay.Visibility = Visibility.Collapsed;
+        ReconnectRing.IsActive = false;
+
+        if (_useWin32Stream)
+        {
+            _video?.SetWindowStatus(string.Empty);
+            ChildDiag("overlay hide(native)");
+        }
+        else
+        {
+            SetChildVideoVisible(true);
+        }
+
+        ChildDiag("overlay hide: cleared");
     }
 
     /// <summary>渲染泵心跳：UI 线程 3 秒没跑过 RenderTick 就记一行日志（区分"解码卡"和"UI 线程被卡"）。</summary>

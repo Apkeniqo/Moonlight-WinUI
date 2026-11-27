@@ -14,9 +14,13 @@
 
         <!-- 自绘标题栏（拖拽区），材质由 SystemBackdrop 提供 -->
         <Grid x:Name="AppTitleBar" Grid.Row="0" Height="36" Background="Transparent">
-            <TextBlock x:Name="TitleText" Margin="16,0,140,0" VerticalAlignment="Center"
-                       FontSize="12" Opacity="0.9"
-                       TextTrimming="CharacterEllipsis" />
+            <StackPanel Orientation="Horizontal" Spacing="8" Margin="16,0,140,0"
+                        VerticalAlignment="Center">
+                <Image x:Name="TitleIcon" Width="16" Height="16" VerticalAlignment="Center" />
+                <TextBlock x:Name="TitleText" VerticalAlignment="Center"
+                           FontSize="12" Opacity="0.9"
+                           TextTrimming="CharacterEllipsis" />
+            </StackPanel>
         </Grid>
 
         <Grid x:Name="VideoArea" Grid.Row="1">
@@ -31,6 +35,19 @@
                                 PointerCaptureLost="VideoPanel_PointerCaptureLost"
                                 PointerWheelChanged="VideoPanel_PointerWheelChanged" />
             </Border>
+
+            <!-- 断线重连：整屏半透明遮罩 + 中央进度 -->
+            <Grid x:Name="ReconnectOverlay" Background="#B3000000" Visibility="Collapsed"
+                  IsHitTestVisible="False">
+                <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="14">
+                    <ProgressRing x:Name="ReconnectRing" IsActive="False" Width="52" Height="52"
+                                  HorizontalAlignment="Center" Foreground="#FFFFFFFF" />
+                    <TextBlock x:Name="ReconnectText" FontSize="18" TextAlignment="Center"
+                               Foreground="#FFFFFFFF" Text="连接中断，正在重新连接…" />
+                    <TextBlock x:Name="ReconnectSubText" FontSize="13" TextAlignment="Center"
+                               Foreground="#B3FFFFFF" Text="" />
+                </StackPanel>
+            </Grid>
 
             <!-- 连接/准备过程：画面正中；首帧到达后自动隐藏 -->
             <Border x:Name="StatusOverlay" HorizontalAlignment="Center" VerticalAlignment="Center"
